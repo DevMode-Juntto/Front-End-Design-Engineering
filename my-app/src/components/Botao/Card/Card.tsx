@@ -22,16 +22,16 @@ export default function Card({
             )}
 
             <h3 className="mb-3 min-h-14 flex items-center justify-center text-xl font-bold text-[var(--azul)]">
-        {titulo}
-      </h3>
+                {titulo}
+            </h3>
 
-      <p className="flex-1 leading-relaxed text-[var(--texto)]">{descricao}</p>
+            <p className="flex-1 leading-relaxed text-[var(--texto)]">{descricao}</p>
 
-       {children && (
-        <div className="mt-auto flex w-full justify-center pt-5">
-          {children}
+            {children && (
+                <div className="mt-auto flex w-full justify-center pt-5">
+                    {children}
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 }     
