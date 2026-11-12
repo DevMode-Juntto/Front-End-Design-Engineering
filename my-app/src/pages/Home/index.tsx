@@ -9,7 +9,7 @@ import {
 
 import Botao from "../../components/Botao/Botao";
 import Card from "../../components/Card/Card";
-import Titulo from "../../components/Titulo/Titulo";
+import Titulo from "../../components/Titulo/Titulo.tsx";
 
 export default function Home() {
   return (
