@@ -84,7 +84,7 @@ my-app/
 │   │   ├── ConfirmacaoRecebimento/
 │   │   ├── Contato/
 │   │   ├── Denuncia/
-│   │   ├── Faq/
+│   │   ├── FAQ/
 │   │   ├── Finalizacao/
 │   │   ├── Historico/
 │   │   ├── Home/
@@ -123,7 +123,7 @@ my-app/
 
 [Integrantes](./src/pages/Integrantes/index.tsx) | - Apresenta os integrantes da equipe.
 
-[FAQ](./src/pages/Faq/index.tsx) | - Principais dúvidas sobre o projeto e a plataforma.
+[FAQ](./src/pages/FAQ/index.tsx) | - Principais dúvidas sobre o projeto e a plataforma.
 
 [Contato](./src/pages/Contato/index.tsx) | - Página destinada ao contato com a equipe do projeto.
 
