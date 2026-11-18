@@ -4,7 +4,9 @@ import { FaArrowLeft, FaCheckCircle, FaPaperPlane } from "react-icons/fa";
 
 import CampoDenuncia from "../../components/CampoDenuncia/CampoDenuncia";
 import AvisoDenuncia from "../../components/AvisoDenuncia/AvisoDenuncia";
+import { api } from "../../services/api";
 
+// controla o formulário de denúncia
 export default function Denuncia() {
   const [idUsuario, setIdUsuario] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -15,9 +17,15 @@ export default function Denuncia() {
     document.title = "Denúncia - Junttô";
   }, []);
 
-  function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
+  // envia a denúncia preenchida
+  async function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setEnviada(true);
+    try {
+      await api.criarDenuncia({ usuarioId: idUsuario, motivo, mensagem });
+      setEnviada(true);
+    } catch {
+      setMensagem("Não foi possível enviar a denúncia. Tente novamente.");
+    }
   }
 
   if (enviada) {

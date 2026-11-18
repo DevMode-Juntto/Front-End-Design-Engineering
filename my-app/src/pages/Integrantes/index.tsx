@@ -5,6 +5,7 @@ import heloisaCostaPereira from "../../img/heloisa-costa-pereira.jpeg";
 import isabelleDantasDeAraujo from "../../img/isabelle-dantas-de-araujo.jpeg";
 import yasminNunesDosSantos from "../../img/yasmin-nunes-dos-santos.jpeg";
 import vitorReisSouza from "../../img/vitor-reis-souza.jpeg";
+import felipeFernandesCabralMota from "../../img/felipe-fernandes-cabral-mota.jpg";
 
 export default function Integrantes() {
   useEffect(() => {
@@ -25,7 +26,13 @@ export default function Integrantes() {
 
         <div className="grid grid-cols-1 gap-8 min-[481px]:grid-cols-2 min-[481px]:gap-5 min-[993px]:grid-cols-3 min-[993px]:gap-6">
             
-          <CardIntegrante titulo="Felipe" />
+          <CardIntegrante
+            titulo="Felipe Fernandes Cabral Mota"
+            info="RM: 569432 | Turma: 1TDSPY"
+            imagem={felipeFernandesCabralMota}
+            github="https://github.com/Felipecmf"
+            linkedin="https://www.linkedin.com/in/felipe-fernandes-126887266/"
+          />
 
           <CardIntegrante
             titulo="Heloisa Costa Pereira"

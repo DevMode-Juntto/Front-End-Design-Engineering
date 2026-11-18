@@ -34,8 +34,7 @@ export default function Sobre() {
     {
       icone: <FaStore />,
       titulo: "Oportunidades locais",
-      descricao:
-        "Valorizar talentos, serviços e pequenos produtores da região.",
+      descricao: "Valorizar talentos, serviços e pequenos produtores da região.",
     },
   ];
 
