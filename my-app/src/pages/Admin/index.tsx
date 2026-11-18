@@ -39,8 +39,6 @@ const abas: { id: Aba; titulo: string; descricao: string }[] = [
   },
 ];
 
-const statusDenuncia = ["PENDENTE", "EM_ANALISE", "RESOLVIDA"] as const;
-
 // traduz o status da denúncia p ficar mais claro
 function nomeStatusDenuncia(status?: string) {
   const nomes: Record<string, string> = {
