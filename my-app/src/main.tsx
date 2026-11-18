@@ -13,7 +13,7 @@ import Contato from "./pages/Contato/index";
 import Perfil from "./pages/Perfil/index";
 import Login from "./pages/Login/index";
 import Cadastro from "./pages/Cadastro/index";
-import FAQ from "./pages/Faq";
+import FAQ from "./pages/FAQ";
 import PublicarPedido from "./pages/PublicarPedido";
 import Finalizacao from "./pages/Finalizacao";
 import Denuncia from "./pages/Denuncia";
