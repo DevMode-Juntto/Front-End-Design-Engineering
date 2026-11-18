@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   FaArrowLeft,
@@ -249,7 +249,7 @@ export default function Historico() {
   const [erro, setErro] = useState("");
 
   // busca os dados do usuário p preencher o histórico
-  async function carregar() {
+  const carregar = useCallback(async () => {
     if (idUsuario === undefined) return;
     setCarregando(true);
     try {
@@ -303,11 +303,11 @@ export default function Historico() {
     } finally {
       setCarregando(false);
     }
-  }
+  }, [idUsuario]);
 
   useEffect(() => {
     void carregar();
-  }, [sessao?.id]);
+  }, [carregar]);
 
   // exclui um pedido aberto depois da confirmação
   async function excluirPedido(id: string | number) {
