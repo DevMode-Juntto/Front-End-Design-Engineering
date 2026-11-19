@@ -20,26 +20,26 @@ import logoPrincipal from "../../img/logo-principal.png";
 import type { ItemMenu } from "../../types/types";
 
 const principais: ItemMenu[] = [
-  { nome: "Home institucional", caminho: "/home", icone: <FaHome /> },
+  { nome: "Home", caminho: "/home", icone: <FaHome /> },
   { nome: "Integrantes", caminho: "/integrantes", icone: <FaUsers /> },
-  { nome: "Sobre o projeto", caminho: "/sobre", icone: <FaLightbulb /> },
-  { nome: "Dúvidas frequentes", caminho: "/faq", icone: <FaQuestionCircle /> },
+  { nome: "Sobre", caminho: "/sobre", icone: <FaLightbulb /> },
+  { nome: "FAQ", caminho: "/faq", icone: <FaQuestionCircle /> },
   { nome: "Contato", caminho: "/contato", icone: <FaEnvelope /> },
 ];
 
 const prototipos: ItemMenu[] = [
   {
-    nome: "HomePrototipo · Painel de ajuda",
+    nome: "Home",
     caminho: "/home-prototipo",
     icone: <FaHandsHelping />,
   },
   {
-    nome: "Publicar pedido de ajuda",
+    nome: "Publicar pedido",
     caminho: "/publicar-pedido",
     icone: <FaPlus />,
   },
-  { nome: "Histórico do usuário", caminho: "/historico", icone: <FaHistory /> },
-  { nome: "Perfil do usuário", caminho: "/perfil", icone: <FaUser /> },
+  { nome: "Histórico", caminho: "/historico", icone: <FaHistory /> },
+  { nome: "Perfil", caminho: "/perfil", icone: <FaUser /> },
   { nome: "Denúncias", caminho: "/denuncia", icone: <FaExclamationTriangle /> },
   { nome: "Painel administrador", caminho: "/admin", icone: <FaLock /> },
 ];
@@ -121,13 +121,11 @@ export default function Menu() {
         <nav className="absolute right-6 top-full flex max-h-[calc(100vh-6rem)] w-80 flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--cinza)] bg-[var(--branco)] p-3 shadow-xl">
           <Grupo
             titulo="Páginas principais"
-            texto="Conteúdos institucionais do projeto"
             itens={principais}
             fechar={fechar}
           />
           <Grupo
             titulo="Protótipos"
-            texto="Fluxos funcionais em demonstração"
             itens={prototipos}
             fechar={fechar}
           />
@@ -139,7 +137,7 @@ export default function Menu() {
             <span className="text-base">
               <FaSignOutAlt />
             </span>
-            <span>Sair da conta</span>
+            <span>Sair</span>
           </button>
         </nav>
       )}

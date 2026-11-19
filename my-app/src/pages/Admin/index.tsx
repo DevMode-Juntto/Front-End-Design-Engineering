@@ -12,18 +12,28 @@ import {
   FaTimes,
   FaUsers,
 } from "react-icons/fa";
-import { api, nomeCompleto, NOMES_STATUS, obterSessao } from "../../services/api";
-import { API_PYTHON_DISPONIVEL, AVISO_API_PYTHON, apiPython } from "../../services/apiPython";
+import {
+  api,
+  nomeCompleto,
+  NOMES_STATUS,
+  obterSessao,
+} from "../../services/api";
+import {
+  API_PYTHON_DISPONIVEL,
+  AVISO_API_PYTHON,
+  apiPython,
+} from "../../services/apiPython";
 import type { Categoria, Denuncia, Pedido, Usuario } from "../../types/types";
 
 // Painel de administração: usuários, categorias e pedidos vêm da API Java;
-// status de usuário, remoção de pedidos, avisos e denúncias ficam na API Python.
+// avisos e denúncias ficam na API Python. A API Java não possui endpoint de
+// desativação de usuários, então esse controle permanece apenas visual.
 type UsuarioAdmin = Usuario & { status?: string };
 
 type Aba = "usuarios" | "categorias" | "pedidos" | "denuncias" | "avisos";
 
-// Enquanto a API Python não está publicada, ativar/desativar usuário é uma simulação:
-// o status fica salvo só neste navegador (localStorage) e nada é enviado para a API Java.
+// A API Java não tem desativação de usuários: ativar/desativar aqui é uma demonstração.
+// O status fica salvo só neste navegador (localStorage) e nada é enviado para as APIs.
 const CHAVE_INATIVOS_DEMO = "junttô_admin_inativos_demo";
 
 function lerInativosDemo(): string[] {
@@ -39,14 +49,19 @@ function salvarInativosDemo(ids: string[]) {
   try {
     localStorage.setItem(CHAVE_INATIVOS_DEMO, JSON.stringify(ids));
   } catch {
-    // sem localStorage (aba anônima restrita): a simulação vale só até recarregar a página
+    // sem localStorage: a demonstração vale só até recarregar a página
   }
 }
 
 type Confirmacao = { usuario: UsuarioAdmin; acao: "desativar" | "reativar" };
 type Aviso = { texto: string; usuario: UsuarioAdmin; desativado: boolean };
 
-const todasAbas: { id: Aba; titulo: string; descricao: string; python?: boolean }[] = [
+const todasAbas: {
+  id: Aba;
+  titulo: string;
+  descricao: string;
+  python?: boolean;
+}[] = [
   {
     id: "usuarios",
     titulo: "Usuários",
@@ -107,10 +122,8 @@ export default function Admin() {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const timerAviso = useRef<number | undefined>(undefined);
 
-  // status exibido: o da API Python quando ela existe; senão, o da simulação local
   function usuarioAtivo(usuario: UsuarioAdmin) {
-    if (inativosDemo.includes(usuario.id)) return false;
-    return String(usuario.status || "ATIVO").toUpperCase() === "ATIVO";
+    return !inativosDemo.includes(usuario.id);
   }
 
   function mostrarAviso(novo: Aviso) {
@@ -131,6 +144,27 @@ export default function Admin() {
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [confirmacao]);
 
+  // abre a pergunta "deseja realmente...?" antes de mudar o status
+  function pedirConfirmacao(usuario: UsuarioAdmin) {
+    setConfirmacao({ usuario, acao: usuarioAtivo(usuario) ? "desativar" : "reativar" });
+  }
+
+  // desativa ou reativa o usuário na demonstração (só neste navegador)
+  function alterarStatusUsuario(usuario: UsuarioAdmin, desativar: boolean) {
+    setConfirmacao(null);
+    const ids = desativar
+      ? [...new Set([...inativosDemo, usuario.id])]
+      : inativosDemo.filter((id) => id !== usuario.id);
+    setInativosDemo(ids);
+    salvarInativosDemo(ids);
+    const nome = nomeCompleto(usuario);
+    mostrarAviso({
+      texto: desativar ? `${nome} foi desativado(a).` : `${nome} foi reativado(a).`,
+      usuario,
+      desativado: desativar,
+    });
+  }
+
   // busca os dados usados no painel
   async function carregar() {
     setCarregando(true);
@@ -145,12 +179,13 @@ export default function Admin() {
       setCategorias(listaCategorias);
       setPedidos(listaPedidos);
       // denúncias vêm da API Python: se ela estiver fora do ar, o resto do painel continua funcionando
-      if (API_PYTHON_DISPONIVEL) try {
-        setDenuncias(await apiPython.listarDenuncias(usuarioAdministrador));
-      } catch {
-        setDenuncias([]);
-        setMensagem("Denúncias indisponíveis: a API Python não respondeu.");
-      }
+      if (API_PYTHON_DISPONIVEL)
+        try {
+          setDenuncias(await apiPython.listarDenuncias(usuarioAdministrador));
+        } catch {
+          setDenuncias([]);
+          setMensagem("Denúncias indisponíveis: a API Python não respondeu.");
+        }
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
@@ -165,49 +200,6 @@ export default function Admin() {
   useEffect(() => {
     void carregar();
   }, []);
-
-  // abre a pergunta "deseja realmente...?" antes de mudar o status
-  function pedirConfirmacao(usuario: UsuarioAdmin) {
-    setConfirmacao({ usuario, acao: usuarioAtivo(usuario) ? "desativar" : "reativar" });
-  }
-
-  // ativa ou desativa um usuário (API Python quando publicada; simulação local até lá)
-  async function alterarStatusUsuario(usuario: UsuarioAdmin, desativar: boolean) {
-    setConfirmacao(null);
-    const nome = nomeCompleto(usuario);
-    try {
-      let simular = !API_PYTHON_DISPONIVEL;
-      if (!simular) {
-        try {
-          if (desativar) await apiPython.desativarUsuario(usuario.id);
-          else await apiPython.alterarStatusUsuario(usuario.id, { status: "ATIVO" });
-          await carregar();
-        } catch (erroPython) {
-          // API Python configurada mas fora do ar: segue com a simulação para a demonstração não travar
-          if (!(erroPython instanceof Error) || !erroPython.message.startsWith("Não foi possível conectar")) throw erroPython;
-          simular = true;
-        }
-      }
-      if (simular) {
-        const ids = desativar
-          ? [...new Set([...inativosDemo, usuario.id])]
-          : inativosDemo.filter((id) => id !== usuario.id);
-        setInativosDemo(ids);
-        salvarInativosDemo(ids);
-      }
-      mostrarAviso({
-        texto: desativar ? `${nome} foi desativado(a).` : `${nome} foi reativado(a).`,
-        usuario,
-        desativado: desativar,
-      });
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível alterar o status do usuário.",
-      );
-    }
-  }
 
   // envia um aviso para os usuários
   async function enviarAviso() {
@@ -280,17 +272,21 @@ export default function Admin() {
     }
   }
 
-  // remove um pedido pelo painel admin
-  async function removerPedido(pedido: Pedido) {
-    if (!window.confirm(`Remover o pedido “${pedido.titulo}”?`)) return;
+  // desativa um pedido usando o status CANCELADO previsto na API Java
+  async function desativarPedido(pedido: Pedido) {
+    if (!window.confirm(`Desativar o pedido “${pedido.titulo}”?`)) return;
     try {
-      await apiPython.removerPedido(pedido.id);
+      await api.atualizarStatusPedido(pedido.id, {
+        usuarioId: usuarioAdministrador,
+        status: "CANCELADO",
+      });
+      setMensagem("Pedido desativado com sucesso.");
       await carregar();
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
           ? erroApi.message
-          : "Não foi possível remover o pedido.",
+          : "Não foi possível desativar o pedido.",
       );
     }
   }
@@ -298,7 +294,9 @@ export default function Admin() {
   // abre os detalhes de uma denúncia
   async function verDenuncia(id: string) {
     try {
-      setDenunciaSelecionada(await apiPython.buscarDenuncia(id, usuarioAdministrador));
+      setDenunciaSelecionada(
+        await apiPython.buscarDenuncia(id, usuarioAdministrador),
+      );
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
@@ -384,8 +382,9 @@ export default function Admin() {
 
         {!API_PYTHON_DISPONIVEL && (
           <p className="mb-5 rounded-xl bg-[var(--creme)] p-4 text-sm text-[var(--azul)]">
-            {AVISO_API_PYTHON} Por enquanto, o painel mostra os dados da API Java, e ativar ou
-            desativar usuários é uma demonstração que fica salva só neste navegador.
+            {AVISO_API_PYTHON} Por enquanto, o painel mostra os dados da API
+            Java, e ativar ou desativar usuários é uma demonstração que fica
+            salva só neste navegador.
           </p>
         )}
 
@@ -422,7 +421,7 @@ export default function Admin() {
                       Usuários
                     </h2>
                     <p className="text-sm text-gray-500">
-                      Ative ou desative o acesso de cada conta.
+                      Todas as contas cadastradas e informações
                     </p>
                   </div>
                 </div>
@@ -533,9 +532,6 @@ export default function Admin() {
                     <h2 className="text-xl font-bold text-[var(--azul)]">
                       Pedidos abertos
                     </h2>
-                    <p className="text-sm text-gray-500">
-                      Remova apenas pedidos que violam as regras.
-                    </p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -553,20 +549,19 @@ export default function Admin() {
                             {pedido.descricao}
                           </p>
                           <p className="mt-2 text-xs text-gray-500">
-                            ID {pedido.id} ·{" "}
-                            {pedido.nomeCategoria} ·{" "}
-                            {NOMES_STATUS[pedido.status] || pedido.status || "Sem status"}
+                            ID {pedido.id} · {pedido.nomeCategoria} ·{" "}
+                            {NOMES_STATUS[pedido.status] ||
+                              pedido.status ||
+                              "Sem status"}
                           </p>
                         </div>
-                        {API_PYTHON_DISPONIVEL && (
-                          <button
-                            type="button"
-                            onClick={() => void removerPedido(pedido)}
-                            className="flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-bold text-[var(--coral)]"
-                          >
-                            <FaTrash /> Remover
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => void desativarPedido(pedido)}
+                          className="flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-bold text-[var(--coral)]"
+                        >
+                          <FaTrash /> Desativar
+                        </button>
                       </article>
                     ))
                   ) : (
@@ -829,7 +824,7 @@ export default function Admin() {
               </button>
               <button
                 type="button"
-                onClick={() => void alterarStatusUsuario(confirmacao.usuario, confirmacao.acao === "desativar")}
+                onClick={() => alterarStatusUsuario(confirmacao.usuario, confirmacao.acao === "desativar")}
                 className={`rounded-lg px-4 py-2 text-sm font-bold text-white ${confirmacao.acao === "desativar" ? "bg-[var(--coral)]" : "bg-[var(--verde)]"}`}
               >
                 {confirmacao.acao === "desativar" ? "Sim, desativar" : "Sim, reativar"}
@@ -851,7 +846,7 @@ export default function Admin() {
             {aviso.desativado && (
               <button
                 type="button"
-                onClick={() => void alterarStatusUsuario(aviso.usuario, false)}
+                onClick={() => alterarStatusUsuario(aviso.usuario, false)}
                 className="mt-2 rounded-lg bg-white px-3 py-1 text-xs font-bold text-[var(--azul)]"
               >
                 Reativar

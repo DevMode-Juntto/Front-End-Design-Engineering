@@ -38,7 +38,7 @@ export default function Chat() {
       id: 1,
       autor: "outro",
       texto:
-        "Olá! Que bom que você se interessou pela minha oportunidade. Como posso ajudar?",
+        "Oiie! Que bom que você se interessou pela minha oportunidade. Como posso te ajudar?",
     },
   ]);
 

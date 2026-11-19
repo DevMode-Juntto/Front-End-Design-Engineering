@@ -141,7 +141,7 @@ export default function Home() {
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <Card
               icone={<FaHome />}
-              titulo="HomePrototipo"
+              titulo="Home"
               descricao="Página principal do usuário, com oportunidades de ajuda, categorias recomendadas, notificações e ajudas em processo."
             >
               <a href="/home-prototipo">
@@ -205,7 +205,7 @@ export default function Home() {
             <Card
               icone={<FaLock />}
               titulo="Painel administrador"
-              descricao="Área administrativa de protótipo para gerenciar usuários, categorias, pedidos, denúncias e enviar avisos."
+              descricao="Área administrativa de protótipo para gerenciar usuários, categorias e pedidos"
             >
               <a href="/admin">
                 <Botao texto="Abrir protótipo" tipo="secundario" />
