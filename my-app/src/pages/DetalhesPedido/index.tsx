@@ -8,119 +8,35 @@ import {
   FaTag,
   FaUser,
 } from "react-icons/fa";
-import { api } from "../../services/api";
-import type { Pedido, Usuario } from "../../types/types";
-
-type PedidoCompleto = Pedido & {
-  fotos?: unknown;
-  fotosUrls?: unknown;
-  foto?: unknown;
-  fotoUrl?: unknown;
-  urlFoto?: unknown;
-  imagem?: unknown;
-  imagemUrl?: unknown;
-  imagens?: unknown;
-  images?: unknown;
-  anexos?: unknown;
-  dtInicio?: string;
-  solicitanteId?: string | number;
-  prestadorId?: string | number;
-};
-
-// traduz o status do pedido p mostrar na tela
-function nomeStatus(status?: string) {
-  const nomes: Record<string, string> = {
-    ABERTO: "Aberto",
-    ACEITO: "Prestador escolhido",
-    EM_ANDAMENTO: "Em andamento",
-    AGUARDANDO_CONFIRMACAO: "Aguardando confirmação",
-    CONCLUIDO: "Concluído",
-    FINALIZADO: "Finalizado",
-    CANCELADO: "Cancelado",
-    EXPIRADO: "Expirado",
-    REMOVIDO: "Removido",
-  };
-  return nomes[String(status || "").toUpperCase()] || status || "Não informado";
-}
-
-// deixa a data em um formato mais fácil
-function dataFormatada(data?: string) {
-  if (!data) return "Data não informada";
-  const resultado = new Date(data);
-  if (Number.isNaN(resultado.getTime())) return data;
-  return resultado.toLocaleString("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
-
-// encontra a primeira imagem do pedido
-function imagensDoPedido(pedido: PedidoCompleto) {
-  const valores = [
-    pedido.fotos,
-    pedido.fotosUrls,
-    pedido.foto,
-    pedido.fotoUrl,
-    pedido.urlFoto,
-    pedido.imagem,
-    pedido.imagemUrl,
-    pedido.imagens,
-    pedido.images,
-    pedido.anexos,
-  ].flatMap((valor) => (Array.isArray(valor) ? valor : [valor]));
-  return valores.flatMap((foto) => {
-    if (typeof foto === "string" && foto.trim()) return [foto];
-    if (foto && typeof foto === "object" && "url" in foto) {
-      const url = foto.url;
-      if (typeof url === "string" && url.trim()) return [url];
-    }
-    return [];
-  });
-}
+import { api, formatarData, formatarValor, NOMES_STATUS, NOMES_STATUS_PAGAMENTO, obterSessao } from "../../services/api";
+import type { Pedido } from "../../types/types";
 
 // mostra os dados de uma pessoa ligada ao pedido
 function Pessoa({
   titulo,
-  pessoa,
   id,
+  nome,
+  email,
 }: {
   titulo: string;
-  pessoa?: Usuario;
-  id?: string | number;
+  id?: string | null;
+  nome?: string | null;
+  email?: string | null;
 }) {
-  const pessoaId = pessoa?.id ?? id;
   return (
     <div className="rounded-2xl bg-[var(--creme)] p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-        {titulo}
-      </p>
+      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">{titulo}</p>
       <div className="mt-3 flex items-center gap-3">
         <div className="flex size-11 items-center justify-center overflow-hidden rounded-full bg-white text-[var(--verde)]">
-          {pessoa?.foto ? (
-            <img
-              src={pessoa.foto}
-              alt={pessoa.nome}
-              className="size-full object-cover"
-            />
-          ) : (
-            <FaUser />
-          )}
+          <FaUser />
         </div>
         <div>
-          <p className="font-bold text-[var(--azul)]">
-            {pessoa?.nome || "Não informado"}
-          </p>
-          <p className="text-xs text-gray-500">
-            ID: {pessoaId ?? "não informado"} ·{" "}
-            {pessoa?.bairro || "Bairro não informado"}
-          </p>
+          <p className="font-bold text-[var(--azul)]">{nome || "Ainda não definido"}</p>
+          {email && <p className="text-xs text-gray-500">Contato: {email}</p>}
         </div>
       </div>
-      {pessoaId !== undefined && (
-        <Link
-          to={`/perfil/${pessoaId}`}
-          className="mt-3 inline-block text-xs font-bold text-[var(--azul)] hover:underline"
-        >
+      {id && (
+        <Link to={`/perfil/${id}`} className="mt-3 inline-block text-xs font-bold text-[var(--azul)] hover:underline">
           Ver perfil
         </Link>
       )}
@@ -134,14 +50,18 @@ export default function DetalhesPedido() {
   const [parametros] = useSearchParams();
   const voltarPara =
     parametros.get("origem") === "historico" ? "/historico" : "/home-prototipo";
-  const [pedido, setPedido] = useState<PedidoCompleto | null>(null);
+  const [pedido, setPedido] = useState<Pedido | null>(null);
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setErro("Pedido não informado.");
+      return;
+    }
+    // com o id do usuário logado, os e-mails de contato aparecem para os participantes
     void api
-      .buscarPedido(id)
-      .then((dados) => setPedido(dados as PedidoCompleto))
+      .buscarPedido(id, obterSessao()?.id)
+      .then(setPedido)
       .catch((erroApi) =>
         setErro(
           erroApi instanceof Error
@@ -151,13 +71,11 @@ export default function DetalhesPedido() {
       );
   }, [id]);
 
-  const erroExibido = erro || (!id ? "Pedido não informado." : "");
-
-  if (erroExibido) {
+  if (erro) {
     return (
       <main className="min-h-screen bg-[var(--creme)] px-4 py-10">
         <div className="mx-auto max-w-3xl rounded-3xl bg-white p-8 text-center shadow-sm">
-          <p className="text-[var(--coral)]">{erroExibido}</p>
+          <p className="text-[var(--coral)]">{erro}</p>
           <Link
             to={voltarPara}
             className="mt-5 inline-block font-bold text-[var(--azul)]"
@@ -179,11 +97,22 @@ export default function DetalhesPedido() {
     );
   }
 
-  const imagens = imagensDoPedido(pedido).slice(0, 1);
-  const categoriaNome =
-    typeof pedido.categoria === "string"
-      ? pedido.categoria
-      : pedido.categoria?.nome || "Não informada";
+  const imagens = pedido.fotoUrl ? [pedido.fotoUrl] : [];
+  const oferta = pedido.tipoPublicacao === "OFERTA";
+  // em AJUDA quem publicou recebe a ajuda; em OFERTA quem publicou é quem ajuda
+  const ajudante = oferta
+    ? { id: pedido.idSolicitante, nome: pedido.nomeSolicitante, email: pedido.emailSolicitante }
+    : { id: pedido.idPrestador, nome: pedido.nomePrestador, email: pedido.emailPrestador };
+  // em OFERTA podem ser vários interessados aceitos: aparece só a quantidade
+  const ajudado = oferta
+    ? {
+        id: null,
+        nome: pedido.totalAceitas
+          ? `${pedido.totalAceitas} interessado(s) aceito(s)`
+          : "Nenhum interessado aceito ainda",
+        email: null,
+      }
+    : { id: pedido.idSolicitante, nome: pedido.nomeSolicitante, email: pedido.emailSolicitante };
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-8">
@@ -210,7 +139,10 @@ export default function DetalhesPedido() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <span className="inline-flex rounded-full bg-[var(--verde)]/10 px-3 py-1 text-xs font-bold text-[var(--verde)]">
-                {nomeStatus(pedido.status)}
+                {NOMES_STATUS[pedido.status] || pedido.status}
+              </span>{" "}
+              <span className="inline-flex rounded-full bg-[var(--laranja)]/10 px-3 py-1 text-xs font-bold text-[var(--laranja)]">
+                {oferta ? "Oferta de ajuda" : "Pedido de ajuda"}
               </span>
               <h2 className="mt-3 text-2xl font-bold text-[var(--azul)]">
                 {pedido.titulo}
@@ -221,14 +153,16 @@ export default function DetalhesPedido() {
             </div>
             <div className="rounded-2xl bg-[var(--creme)] px-5 py-4 text-right">
               <p className="text-xs text-gray-500">Valor combinado</p>
-              <p className="mt-1 text-2xl font-bold text-[var(--laranja)]">
-                {pedido.valor !== undefined
-                  ? pedido.valor.toLocaleString("pt-BR", {
-                      style: "currency",
-                      currency: "BRL",
-                    })
-                  : "A combinar"}
-              </p>
+              <p className="mt-1 text-2xl font-bold text-[var(--laranja)]">{formatarValor(pedido)}</p>
+              {pedido.status === "CONCLUIDO" && pedido.total != null && pedido.tipoPublicacao === "AJUDA" && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Total: R$ {pedido.total.toFixed(2).replace(".", ",")}
+                  {pedido.statusPagamento ? ` (${NOMES_STATUS_PAGAMENTO[pedido.statusPagamento] || pedido.statusPagamento})` : ""}
+                </p>
+              )}
+              {pedido.tipoPublicacao === "OFERTA" && !!pedido.totalAceitas && (
+                <p className="mt-1 text-xs text-gray-500">{pedido.totalAceitas} interessado(s) aceito(s)</p>
+              )}
             </div>
           </div>
 
@@ -236,35 +170,37 @@ export default function DetalhesPedido() {
             <div className="rounded-xl border border-gray-200 p-4">
               <FaTag className="text-[var(--laranja)]" />
               <p className="mt-2 text-xs text-gray-500">Categoria</p>
-              <p className="font-bold text-[var(--azul)]">{categoriaNome}</p>
+              <p className="font-bold text-[var(--azul)]">{pedido.nomeCategoria}</p>
             </div>
             <div className="rounded-xl border border-gray-200 p-4">
               <FaMapMarkerAlt className="text-[var(--verde)]" />
               <p className="mt-2 text-xs text-gray-500">Local</p>
-              <p className="font-bold text-[var(--azul)]">
-                {pedido.bairro || "Bairro não informado"}
-              </p>
+              {pedido.latitude != null && pedido.longitude != null ? (
+                <a
+                  href={`https://www.google.com/maps?q=${pedido.latitude},${pedido.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold text-[var(--azul)] hover:underline"
+                >
+                  Ver no mapa
+                </a>
+              ) : (
+                <p className="font-bold text-[var(--azul)]">Não informado</p>
+              )}
             </div>
             <div className="rounded-xl border border-gray-200 p-4">
               <FaCalendarAlt className="text-[var(--azul)]" />
               <p className="mt-2 text-xs text-gray-500">Data e horário</p>
               <p className="font-bold text-[var(--azul)]">
-                {dataFormatada(pedido.data || pedido.dtInicio)}
+                {formatarData(pedido.dtInicio)}
+                {pedido.dtFinal ? ` até ${formatarData(pedido.dtFinal)}` : ""}
               </p>
             </div>
           </div>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2">
-            <Pessoa
-              titulo="Quem pediu a ajuda"
-              pessoa={pedido.solicitante}
-              id={pedido.solicitanteId}
-            />
-            <Pessoa
-              titulo="Quem vai ajudar"
-              pessoa={pedido.prestador}
-              id={pedido.prestadorId}
-            />
+            <Pessoa titulo={oferta ? "Interessados" : "Quem recebe a ajuda"} {...ajudado} />
+            <Pessoa titulo="Quem vai ajudar" {...ajudante} />
           </div>
 
           <section className="mt-7">
@@ -284,7 +220,7 @@ export default function DetalhesPedido() {
               </div>
             ) : (
               <p className="mt-3 rounded-xl bg-[var(--creme)] p-4 text-sm text-gray-500">
-                Este pedido não possui fotos anexadas.
+                Este pedido não possui foto.
               </p>
             )}
           </section>

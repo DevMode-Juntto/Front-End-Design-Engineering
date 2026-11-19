@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   FaArrowRight,
@@ -7,345 +7,162 @@ import {
   FaCheck,
   FaHandsHelping,
   FaPlus,
+  FaStar,
   FaTag,
   FaTimes,
   FaTrash,
   FaUserCheck,
 } from "react-icons/fa";
-import { api, obterSessao } from "../../services/api";
-import type { Categoria, Notificacao, Pedido } from "../../types/types";
+import { apiIA } from "../../services/apiIA";
+import { api, formatarValor, NOMES_STATUS, NOMES_STATUS_CANDIDATURA, obterSessao } from "../../services/api";
+import type { Candidatura, Categoria, Notificacao, Pedido } from "../../types/types";
 
-// encontra a categoria usada pelo pedido
-function categoria(pedido: Pedido, categorias: Categoria[] = []) {
-  if (typeof pedido.categoria === "string") return pedido.categoria;
-  if (pedido.categoria && typeof pedido.categoria === "object")
-    return pedido.categoria.nome;
-  const categoriaEncontrada = categorias.find(
-    (item) => String(item.id) === String(pedido.categoriaId),
-  );
-  if (categoriaEncontrada) return categoriaEncontrada.nome;
-  return "Outros";
+// notificação com os dados do pedido e, quando é uma nova candidatura, os dados do candidato
+type NotificacaoCompleta = Notificacao & { pedido?: Pedido; candidatura?: Candidatura };
+
+const DIAS_PARA_AVALIAR = 14;
+
+// some do painel quando foi cancelado ou concluído há mais de 14 dias (prazo para avaliar e confirmar)
+function encerrado(pedido: Pedido) {
+  if (pedido.status === "CANCELADO") return true;
+  if (pedido.status !== "CONCLUIDO") return false;
+  const fim = pedido.dtFinal ? new Date(pedido.dtFinal).getTime() : 0;
+  return Date.now() - fim > DIAS_PARA_AVALIAR * 24 * 60 * 60 * 1000;
 }
 
-// formata o valor do pedido
-function valor(pedido: Pedido) {
-  return pedido.valor === undefined
-    ? "Valor a combinar"
-    : `R$ ${pedido.valor.toFixed(2).replace(".", ",")}`;
+// texto do botão de candidatura: em AJUDA a pessoa quer ajudar; em OFERTA quer receber a ajuda
+function textoCandidatar(pedido: Pedido) {
+  return pedido.tipoPublicacao === "OFERTA" ? "Tenho interesse" : "Quero ajudar";
 }
 
-// mostra o status do pedido de forma simples
-function nomeStatus(status?: string) {
-  const nomes: Record<string, string> = {
-    ABERTO: "Aguardando prestador",
-    ESCOLHIDO: "Prestador escolhido",
-    ACEITO: "Prestador escolhido",
-    EM_ANDAMENTO: "Ajuda em andamento",
-    AGUARDANDO_CONFIRMACAO: "Aguardando confirmação",
-    CONCLUIDO: "Serviço concluído",
-    FINALIZADO: "Ajuda finalizada",
-    CANCELADO: "Ajuda cancelada",
-  };
-  return nomes[String(status || "").toUpperCase()] || "Em andamento";
-}
-
-// confere se o pedido foi feito pelo usuário
-function ehPedidoDoUsuario(pedido: Pedido, usuarioId?: string | number) {
-  if (usuarioId === undefined) return false;
-  const pedidoComCamposExtras = pedido as Pedido & {
-    solicitanteId?: string | number;
-    usuarioId?: string | number;
-    donoId?: string | number;
-  };
-  const solicitanteId =
-    pedido.solicitante?.id ??
-    pedidoComCamposExtras.solicitanteId ??
-    pedidoComCamposExtras.usuarioId ??
-    pedidoComCamposExtras.donoId;
-  return (
-    solicitanteId !== undefined && String(solicitanteId) === String(usuarioId)
-  );
-}
-
-// confere se o pedido combina com as categorias
-function pertenceAsCategorias(
-  pedido: Pedido,
-  tags: string[],
-  categorias: Categoria[],
-) {
-  if (!tags.length) return true;
-  const nomeCategoria = categoria(pedido, categorias).toLowerCase();
-  const idCategoria = String(pedido.categoriaId ?? "");
-  return tags.some(
-    (tag) =>
-      String(tag) === idCategoria ||
-      nomeCategoria.includes(String(tag).toLowerCase()) ||
-      String(tag).toLowerCase().includes(nomeCategoria),
-  );
-}
-
-// pega os dados da pessoa que se candidatou
-function dadosCandidato(notificacao: Notificacao) {
-  const candidato = notificacao.prestador || notificacao.usuario;
-  const id =
-    candidato?.id ||
-    notificacao.prestadorId ||
-    notificacao.usuarioId ||
-    notificacao.remetenteId;
-  const nome =
-    candidato?.nome ||
-    String(
-      notificacao.nomePrestador ||
-        notificacao.nomeUsuario ||
-        "Pessoa interessada",
-    );
-  return { id, nome };
-}
-
-// confere se a notificação é de candidatura
-function ehCandidato(notificacao: Notificacao) {
-  if (notificacao.tipo)
-    return ["NOVA_SOLICITACAO", "NOVA_CANDIDATURA"].includes(
-      notificacao.tipo.toUpperCase(),
-    );
-  const texto =
-    `${notificacao.tipo || ""} ${notificacao.mensagem || ""}`.toLowerCase();
-  if (
-    texto.includes("pagamento") ||
-    texto.includes("sua solicitação foi aceita") ||
-    texto.includes("sua solicitacao foi aceita") ||
-    texto.includes("nova conversa") ||
-    texto.includes("+1")
-  )
-    return false;
-  return (
-    texto.includes("aceitou") ||
-    texto.includes("quer ajudar") ||
-    texto.includes("se ofereceu") ||
-    texto.includes("prestador")
-  );
-}
-
-// filtra as candidaturas ainda disponíveis
-async function notificacoesDeCandidatosAtuais(
-  lista: Notificacao[],
-  usuarioId: string | number,
-) {
-  const pedidosComCandidatos = [
-    ...new Set(
-      lista
-        .filter(ehCandidato)
-        .map((notificacao) => notificacao.pedidoId || notificacao.pedido?.id)
-        .filter((id): id is string | number => id !== undefined),
-    ),
-  ];
-  const escolhidos = new Map<string, string>();
-  await Promise.all(
-    pedidosComCandidatos.map(async (pedidoId) => {
-      try {
-        const pedido = await api.buscarPedido(pedidoId);
-        if (pedido.tipoPublicacao === "OFERTA") return;
-        const solicitacaoAceita = (
-          await api.listarSolicitacoesPedido(pedidoId, usuarioId)
-        ).find((item) =>
-          ["ACEITA", "ESCOLHIDO"].includes(String(item.status).toUpperCase()),
-        );
-        if (solicitacaoAceita)
-          escolhidos.set(String(pedidoId), String(solicitacaoAceita.id));
-      } catch {
-        // mantém as notificações caso o endpoint de solicitações não esteja disponível
-      }
-    }),
-  );
-  return lista.filter((notificacao) => {
-    if (!ehCandidato(notificacao)) return true;
-    const pedidoId = notificacao.pedidoId || notificacao.pedido?.id;
-    const solicitacaoAceita =
-      pedidoId === undefined ? undefined : escolhidos.get(String(pedidoId));
-    return (
-      !solicitacaoAceita ||
-      String(notificacao.solicitacaoId) === solicitacaoAceita
-    );
-  });
-}
-
-// reúne as áreas e ações da home de protótipo
 export default function HomePrototipo() {
   const sessao = obterSessao();
   const navegar = useNavigate();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<Categoria[]>([]);
+  // ranking da IA: id do pedido -> chance (0 a 1) de combinar com o usuário
+  const [rankingIA, setRankingIA] = useState<Record<string, number>>({});
   const [solicitados, setSolicitados] = useState<Pedido[]>([]);
   const [aceitos, setAceitos] = useState<Pedido[]>([]);
-  const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
+  // pedido -> minha candidatura ACEITA nele (para desistir e para saber se participo de uma OFERTA)
+  const [minhasAceitas, setMinhasAceitas] = useState<Record<string, string>>({});
+  const [notificacoes, setNotificacoes] = useState<NotificacaoCompleta[]>([]);
   const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
-  const [candidatosEscolhidos, setCandidatosEscolhidos] = useState<
-    Record<string, string | number>
-  >({});
+  const [candidatosAbertos, setCandidatosAbertos] = useState<Record<string, Candidatura[]>>({});
   const [mensagem, setMensagem] = useState("");
+  // com categorias escolhidas, começa filtrando por elas; o usuário pode ver todas
+  const [soMinhasCategorias, setSoMinhasCategorias] = useState(true);
+
+  const erroTexto = (erroApi: unknown, padrao: string) => (erroApi instanceof Error ? erroApi.message : padrao);
 
   // busca pedidos, notificações e dados da home
-  const carregar = useCallback(async () => {
-    let oportunidades: Pedido[] = [];
+  async function carregar() {
     try {
-      oportunidades = await api.listarPedidos();
+      const oportunidades = await api.listarPedidos();
       setPedidos(oportunidades);
-    } catch {
-      setPedidos([]);
-      setMensagem("Não foi possível carregar as oportunidades agora.");
-    }
-    if (!sessao?.id) return;
-
-    const resultados = await Promise.allSettled([
-      api.listarTags(sessao.id),
-      api.listarCategorias(),
-      api.listarAtividades(sessao.id, "SOLICITANTE"),
-      api.listarAtividades(sessao.id, "PRESTADOR"),
-      api.listarNotificacoes(sessao.id),
-    ]);
-    const [
-      resultadoTags,
-      resultadoCategorias,
-      resultadoSolicitados,
-      resultadoAceitos,
-      resultadoNotificacoes,
-    ] = resultados;
-    const minhasTags =
-      resultadoTags.status === "fulfilled" ? resultadoTags.value : [];
-    const listaCategorias =
-      resultadoCategorias.status === "fulfilled"
-        ? resultadoCategorias.value
-        : [];
-    const pedidosSolicitados =
-      resultadoSolicitados.status === "fulfilled"
-        ? resultadoSolicitados.value
-        : [];
-    const pedidosAceitos =
-      resultadoAceitos.status === "fulfilled" ? resultadoAceitos.value : [];
-    const listaNotificacoes =
-      resultadoNotificacoes.status === "fulfilled"
-        ? resultadoNotificacoes.value
-        : [];
-    setTags(minhasTags);
-    setCategorias(listaCategorias);
-    setSolicitados(
-      pedidosSolicitados.filter(
-        (pedido) =>
-          pedido.status !== "CONCLUIDO" &&
-          pedido.status !== "FINALIZADO" &&
-          pedido.status !== "CANCELADO",
-      ),
-    );
-    setAceitos(
-      pedidosAceitos.filter(
-        (pedido) =>
-          pedido.status !== "CONCLUIDO" &&
-          pedido.status !== "FINALIZADO" &&
-          pedido.status !== "CANCELADO",
-      ),
-    );
-    const notificacoesAtuais = await notificacoesDeCandidatosAtuais(
-      listaNotificacoes,
-      sessao.id,
-    );
-    try {
-      const notificacoesComPedido = await Promise.all(
-        notificacoesAtuais.map(async (notificacao) => {
-          const pedidoId = notificacao.pedidoId || notificacao.pedido?.id;
-          const candidaturaId = notificacao.solicitacaoId;
-          let atualizada = notificacao;
-          if (pedidoId !== undefined && candidaturaId !== undefined) {
+      if (!sessao?.id) return;
+      const [minhasTags, meusPedidos, minhasParticipacoes, minhasCandidaturas, listaNotificacoes] = await Promise.all([
+        api.listarTags(sessao.id),
+        api.listarAtividades(sessao.id, "SOLICITANTE"),
+        api.listarAtividades(sessao.id, "PRESTADOR"),
+        api.listarMinhasCandidaturas(sessao.id),
+        api.listarNotificacoes(sessao.id),
+      ]);
+      setTags(minhasTags);
+      setSolicitados(meusPedidos.filter((pedido) => !encerrado(pedido)));
+      // pedidos em que fui aceito (as candidaturas ainda pendentes ficam no histórico)
+      const aceitas: Record<string, string> = {};
+      minhasCandidaturas
+        .filter((candidatura) => candidatura.status === "ACEITA")
+        .forEach((candidatura) => (aceitas[candidatura.idPedido] = candidatura.id));
+      setMinhasAceitas(aceitas);
+      setAceitos(minhasParticipacoes.filter((pedido) => aceitas[pedido.id] && !encerrado(pedido)));
+      // IA: ordena as oportunidades pela chance de o usuário se interessar (se a API de IA estiver no ar)
+      apiIA
+        .recomendar(
+          {
+            id: sessao.id,
+            tags: minhasTags.map((tag) => tag.id),
+            latitude: sessao.latitude,
+            longitude: sessao.longitude,
+            historicoCategorias: minhasParticipacoes.map((pedido) => pedido.idCategoria),
+          },
+          oportunidades.filter((pedido) => pedido.idSolicitante !== sessao.id),
+        )
+        .then((lista) => {
+          const ranking: Record<string, number> = {};
+          lista.forEach((item) => (ranking[String(item.id)] = item.probabilidade));
+          setRankingIA(ranking);
+        })
+        .catch(() => setRankingIA({}));
+      const completas = await Promise.all(
+        listaNotificacoes.map(async (notificacao): Promise<NotificacaoCompleta> => {
+          const completa: NotificacaoCompleta = { ...notificacao };
+          try {
+            completa.pedido = await api.buscarPedido(notificacao.idPedido, sessao.id);
+          } catch {
+            // pedido pode ter sido excluído
+          }
+          if (notificacao.tipo === "NOVA_CANDIDATURA") {
             try {
-              const candidatura = await api.buscarSolicitacaoPedido(
-                pedidoId,
-                candidaturaId,
-                sessao.id,
-              );
-              atualizada = {
-                ...atualizada,
-                prestadorId: candidatura.prestadorId,
-                prestador: candidatura.prestador,
-              };
+              completa.candidatura = await api.buscarCandidatura(notificacao.idCandidatura, sessao.id);
             } catch {
-              // mantém a notificação mesmo se os dados da candidatura falharem
+              // candidatura pode não estar mais disponível
             }
           }
-          if (pedidoId === undefined || atualizada.pedido?.titulo)
-            return atualizada;
-          try {
-            return {
-              ...atualizada,
-              pedido: await api.buscarPedido(pedidoId),
-            };
-          } catch {
-            return atualizada;
-          }
+          return completa;
         }),
       );
-      setNotificacoes(notificacoesComPedido);
+      setNotificacoes(completas);
     } catch {
-      setNotificacoes(notificacoesAtuais);
+      setMensagem("Não foi possível carregar todas as informações do painel.");
     }
+  }
+
+  useEffect(() => {
+    void carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessao?.id]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void carregar(), 0);
-    return () => window.clearTimeout(timer);
-  }, [carregar]);
-
-  useEffect(() => {
     const atualizarNotificacoes = () => void carregar();
-    window.addEventListener(
-      "junttô:notificacoes-atualizadas",
-      atualizarNotificacoes,
-    );
-    return () =>
-      window.removeEventListener(
-        "junttô:notificacoes-atualizadas",
-        atualizarNotificacoes,
-      );
-  }, [carregar]);
+    window.addEventListener("junttô:notificacoes-atualizadas", atualizarNotificacoes);
+    return () => window.removeEventListener("junttô:notificacoes-atualizadas", atualizarNotificacoes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessao?.id]);
 
+  // oportunidades: pedidos abertos de outras pessoas, nas categorias do usuário (ou todas, se ele não tiver)
   const oportunidades = useMemo(
     () =>
       pedidos
-        .filter((pedido) => !ehPedidoDoUsuario(pedido, sessao?.id))
-        .filter((pedido) => pertenceAsCategorias(pedido, tags, categorias)),
-    [pedidos, sessao?.id, tags, categorias],
+        .filter((pedido) => pedido.idSolicitante !== sessao?.id)
+        .filter(
+          (pedido) => !soMinhasCategorias || !tags.length || tags.some((tag) => tag.id === pedido.idCategoria),
+        )
+        // com a IA no ar, as mais compatíveis vêm primeiro
+        .sort((a, b) => (rankingIA[b.id] ?? -1) - (rankingIA[a.id] ?? -1)),
+    [pedidos, sessao?.id, tags, rankingIA, soMinhasCategorias],
   );
-  const recomendadaDisponivel = oportunidades[0];
-  const naoLidas = notificacoes.filter(
-    (notificacao) => !notificacao.lida,
-  ).length;
+  // sugestão principal: a melhor da IA (entre todos os pedidos abertos) ou a primeira oportunidade
+  const melhorIA = Object.entries(rankingIA).sort((a, b) => b[1] - a[1])[0];
+  const recomendadaDisponivel =
+    (melhorIA && pedidos.find((pedido) => pedido.id === melhorIA[0] && pedido.status === "ABERTO")) || oportunidades[0];
+  const chanceIA = (pedido: Pedido) =>
+    rankingIA[pedido.id] != null ? Math.round(rankingIA[pedido.id] * 100) : null;
+  const naoLidas = notificacoes.filter((notificacao) => !notificacao.lida).length;
 
   // envia uma candidatura para o pedido
-  async function aceitar(id: string | number) {
+  async function candidatar(pedido: Pedido) {
+    if (!sessao?.id) {
+      setMensagem("Faça login para se candidatar.");
+      return;
+    }
     try {
-      if (!sessao?.id) {
-        setMensagem("Faça login para aceitar uma oportunidade de ajuda.");
-        return;
-      }
-      const pedido = await api.buscarPedido(id);
-      if (ehPedidoDoUsuario(pedido, sessao?.id)) {
-        setMensagem("Você não pode aceitar o próprio pedido de ajuda.");
-        return;
-      }
-      await api.aceitarPedido(
-        id,
-        sessao.id,
-        "Tenho interesse em realizar esta ajuda.",
-      );
-      setMensagem(
-        `Solicitação enviada para a ajuda “${pedido.titulo}”. Aguarde o solicitante escolher o prestador.`,
-      );
+      await api.candidatar(pedido.id, sessao.id);
+      setMensagem(`Candidatura enviada para “${pedido.titulo}”. Aguarde quem publicou aceitar.`);
       await carregar();
     } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível aceitar esta oportunidade.",
-      );
+      setMensagem(erroTexto(erroApi, "Não foi possível se candidatar."));
     }
   }
 
@@ -354,248 +171,289 @@ export default function HomePrototipo() {
     if (notificacao.lida) return;
     await api.marcarNotificacaoLida(notificacao.id);
     setNotificacoes((anteriores) =>
-      anteriores.map((item) =>
-        item.id === notificacao.id ? { ...item, lida: true } : item,
-      ),
+      anteriores.map((item) => (item.id === notificacao.id ? { ...item, lida: true } : item)),
     );
   }
 
   // exclui uma notificação escolhida
   async function excluirNotificacao(notificacao: Notificacao) {
-    if (
-      !window.confirm(
-        "Tem certeza que deseja excluir esta notificação? Essa ação não pode ser desfeita.",
-      )
-    )
-      return;
+    if (!window.confirm("Tem certeza que deseja excluir esta notificação? Essa ação não pode ser desfeita.")) return;
     try {
       await api.excluirNotificacao(notificacao.id);
-      setNotificacoes((anteriores) =>
-        anteriores.filter((item) => item.id !== notificacao.id),
-      );
+      setNotificacoes((anteriores) => anteriores.filter((item) => item.id !== notificacao.id));
     } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível excluir a notificação.",
-      );
+      setMensagem(erroTexto(erroApi, "Não foi possível excluir a notificação."));
     }
   }
 
   // limpa todas as notificações depois de confirmar
   async function limparNotificacoes() {
     if (!notificacoes.length) return;
-    if (
-      !window.confirm(
-        "Tem certeza que deseja excluir todas as notificações? Essa ação não pode ser desfeita.",
-      )
-    )
-      return;
+    if (!window.confirm("Tem certeza que deseja excluir todas as notificações? Essa ação não pode ser desfeita.")) return;
     try {
-      await Promise.all(
-        notificacoes.map((notificacao) =>
-          api.excluirNotificacao(notificacao.id),
-        ),
-      );
+      await Promise.all(notificacoes.map((notificacao) => api.excluirNotificacao(notificacao.id)));
       setNotificacoes([]);
       setNotificacoesAbertas(false);
     } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível limpar as notificações.",
-      );
+      setMensagem(erroTexto(erroApi, "Não foi possível limpar as notificações."));
     }
   }
 
-  // escolhe quem vai realizar a ajuda
-  async function escolherCandidato(notificacao: Notificacao) {
-    const pedidoId = notificacao.pedidoId || notificacao.pedido?.id;
-    const nomePedido =
-      notificacao.pedido?.titulo || `Pedido #${pedidoId ?? "não identificado"}`;
-    const candidato = dadosCandidato(notificacao);
-    if (pedidoId === undefined || candidato.id === undefined) {
+  // dono do pedido aceita ou recusa um candidato
+  // AJUDA: aceita um só (o pedido vai para "Em andamento"); OFERTA: pode aceitar vários interessados
+  async function responderCandidato(candidatura: Candidatura, status: "ACEITA" | "RECUSADA", ehOferta = false) {
+    if (!sessao?.id) return;
+    try {
+      await api.responderCandidatura(candidatura.id, { usuarioId: sessao.id, status });
       setMensagem(
-        "Não foi possível identificar o pedido e o prestador desta solicitação.",
+        status === "ACEITA"
+          ? ehOferta
+            ? `${candidatura.nomePrestador} foi aceito em “${candidatura.tituloPedido}”. Você pode aceitar outros interessados.`
+            : `${candidatura.nomePrestador} foi aceito para “${candidatura.tituloPedido}”. Os outros candidatos continuam na fila.`
+          : `Candidatura de ${candidatura.nomePrestador} recusada.`,
       );
-      return;
+      setCandidatosAbertos({});
+      await carregar();
+    } catch (erroApi) {
+      setMensagem(erroTexto(erroApi, "Não foi possível responder a candidatura."));
     }
-    if (!sessao?.id) {
-      setMensagem("Faça login para escolher um prestador.");
+  }
+
+  // abre ou fecha a lista de candidatos de um pedido meu
+  async function alternarCandidatos(pedido: Pedido) {
+    if (!sessao?.id) return;
+    if (candidatosAbertos[pedido.id]) {
+      setCandidatosAbertos(({ [pedido.id]: _removido, ...resto }) => resto);
       return;
     }
     try {
-      const solicitacoes = await api.listarSolicitacoesPedido(
-        pedidoId,
-        sessao.id,
-      );
-      const pedido = await api.buscarPedido(pedidoId);
-      const outraSolicitacaoAceita = solicitacoes.find(
-        (item) =>
-          String(item.status).toUpperCase() === "ACEITA" &&
-          String(item.id) !== String(notificacao.solicitacaoId),
-      );
-      if (pedido.tipoPublicacao !== "OFERTA" && outraSolicitacaoAceita) {
-        setMensagem("Você já escolheu um prestador para esta ajuda.");
-        return;
-      }
-      const solicitacaoId =
-        notificacao.solicitacaoId ||
-        solicitacoes.find(
-          (item) =>
-            String(item.prestadorId || item.prestador?.id) ===
-            String(candidato.id),
-        )?.id;
-      if (solicitacaoId === undefined) {
-        setMensagem(
-          "Não foi possível identificar a solicitação deste prestador.",
-        );
-        return;
-      }
-      await api.buscarSolicitacaoPedido(pedidoId, solicitacaoId, sessao.id);
-      await api.atualizarSolicitacaoPedido(pedidoId, solicitacaoId, {
-        usuarioId: sessao.id,
-        status: "ACEITA",
-        observacao: "Prestador escolhido pelo solicitante.",
-      });
-      await marcarComoLida(notificacao);
-      setCandidatosEscolhidos((anteriores) => ({
-        ...anteriores,
-        [String(pedidoId)]: candidato.id as string | number,
-      }));
-      if (pedido.tipoPublicacao !== "OFERTA") {
-        setNotificacoes((anteriores) =>
-          anteriores.filter(
-            (item) =>
-              !ehCandidato(item) ||
-              String(item.pedidoId || item.pedido?.id) !== String(pedidoId) ||
-              item.id === notificacao.id,
-          ),
-        );
-      }
-      setMensagem(
-        `${candidato.nome} foi escolhido para a ajuda “${nomePedido}”. Os demais candidatos foram removidos desta lista.`,
-      );
-      await carregar();
+      const lista = await api.listarCandidaturasPedido(pedido.id, sessao.id);
+      setCandidatosAbertos((anteriores) => ({ ...anteriores, [pedido.id]: lista }));
     } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível escolher este prestador.",
-      );
+      setMensagem(erroTexto(erroApi, "Não foi possível carregar os candidatos."));
     }
   }
 
   // abre a ação ligada à notificação
-  async function abrirNotificacao(notificacao: Notificacao) {
-    let notificacaoAberta = notificacao;
-    try {
-      notificacaoAberta = await api.buscarNotificacao(notificacao.id);
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível abrir a notificação.",
-      );
-    }
-    await marcarComoLida(notificacaoAberta);
-    if (ehCandidato(notificacaoAberta)) return;
-    const pedidoId =
-      "pedidoId" in notificacaoAberta ? notificacaoAberta.pedidoId : undefined;
-    const texto = String(notificacaoAberta.mensagem || "").toLowerCase();
-    if (
-      pedidoId !== undefined ||
-      texto.includes("pagamento") ||
-      texto.includes("recebeu")
-    ) {
+  async function abrirNotificacao(notificacao: NotificacaoCompleta) {
+    await marcarComoLida(notificacao);
+    // pedido concluído: em AJUDA quem ajudou confirma o recebimento; em OFERTA o interessado avalia
+    if (notificacao.tipo === "PEDIDO_CONCLUIDO")
       navegar(
-        pedidoId === undefined
-          ? "/confirmacao-recebimento"
-          : `/confirmacao-recebimento?pedidoId=${String(pedidoId)}`,
+        notificacao.pedido?.tipoPublicacao === "OFERTA"
+          ? `/finalizacao?pedidoId=${notificacao.idPedido}`
+          : `/confirmacao-recebimento?pedidoId=${notificacao.idPedido}`,
       );
-    } else {
-      setNotificacoesAbertas(false);
+    else navegar(`/pedido/${notificacao.idPedido}`);
+  }
+
+  // cancela a publicação ou conclui uma OFERTA (a AJUDA é concluída na tela de finalização)
+  async function mudarStatus(pedido: Pedido, status: "CONCLUIDO" | "CANCELADO") {
+    if (!sessao?.id) return;
+    if (status === "CANCELADO" && !window.confirm("Tem certeza que deseja cancelar esta publicação?")) return;
+    if (
+      status === "CONCLUIDO" &&
+      !window.confirm("Concluir a oferta? Quem ainda está pendente será recusado e os aceitos poderão avaliar.")
+    )
+      return;
+    try {
+      await api.atualizarStatusPedido(pedido.id, { usuarioId: sessao.id, status });
+      await carregar();
+    } catch (erroApi) {
+      setMensagem(erroTexto(erroApi, "Não foi possível atualizar o andamento."));
+    }
+  }
+
+  // candidato aceito desiste (não poderá se candidatar de novo)
+  async function desistir(pedido: Pedido) {
+    const idCandidatura = minhasAceitas[pedido.id];
+    if (!sessao?.id || !idCandidatura) return;
+    if (!window.confirm("Ao desistir, você não poderá se candidatar a este pedido de novo. Deseja continuar?")) return;
+    try {
+      await api.desistirCandidatura(idCandidatura, sessao.id);
+      setMensagem("Você desistiu desta ajuda.");
+      await carregar();
+    } catch (erroApi) {
+      setMensagem(erroTexto(erroApi, "Não foi possível desistir."));
     }
   }
 
   // exclui um pedido publicado ainda aberto
-  async function excluirPedidoPublicado(id: string | number) {
+  async function excluirPedidoPublicado(id: string) {
     if (!sessao?.id) return;
-    if (
-      !window.confirm(
-        "Tem certeza que deseja excluir esta ajuda publicada? Ela deixará de aparecer para outras pessoas.",
-      )
-    )
+    if (!window.confirm("Tem certeza que deseja excluir esta publicação? Ela deixará de aparecer para outras pessoas."))
       return;
     try {
       await api.excluirPedido(id, sessao.id);
-      setMensagem("Ajuda publicada excluída.");
+      setMensagem("Publicação excluída.");
       await carregar();
     } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível excluir a ajuda publicada.",
+      setMensagem(erroTexto(erroApi, "Não foi possível excluir a publicação."));
+    }
+  }
+
+  // botão principal do card conforme o papel (ajudante x quem recebe) e o status
+  function acaoPrincipal(pedido: Pedido) {
+    const eu = sessao?.id;
+    const ehOferta = pedido.tipoPublicacao === "OFERTA";
+    const souDono = pedido.idSolicitante === eu;
+    const souAjudante = pedido.idAjudante === eu;
+    const botao = (texto: string, aoClicar: () => void, cor = "bg-[var(--verde)]") => (
+      <button type="button" onClick={aoClicar} className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${cor}`}>
+        {texto}
+      </button>
+    );
+    const confirmacao = () => navegar(`/confirmacao-recebimento?pedidoId=${pedido.id}`);
+    const finalizacao = () => navegar(`/finalizacao?pedidoId=${pedido.id}`);
+
+    if (pedido.status === "ABERTO" && souDono)
+      return botao("Ver candidatos", () => void alternarCandidatos(pedido), "bg-[var(--azul)]");
+    if (ehOferta) {
+      if (souDono && pedido.status === "CONCLUIDO") return botao("Pagamentos e avaliações", confirmacao);
+      if (!souDono && pedido.status === "CONCLUIDO") return botao("Avaliar", finalizacao, "bg-[var(--laranja)]");
+      return null;
+    }
+    // AJUDA
+    if (pedido.status === "EM_ANDAMENTO" && souDono)
+      return botao("Finalizar ajuda", finalizacao, "bg-[var(--laranja)]");
+    if (pedido.status === "CONCLUIDO" && souAjudante) {
+      const recompensaPendente = pedido.naoIncluirPagamento && !!pedido.recompensa && !pedido.dtRecompensa;
+      return botao(
+        pedido.statusPagamento === "PENDENTE" || recompensaPendente ? "Confirmar recebimento" : "Avaliar",
+        confirmacao,
       );
     }
+    if (pedido.status === "CONCLUIDO" && souDono) return botao("Avaliar", finalizacao, "bg-[var(--laranja)]");
+    return null;
   }
 
   // monta o card de ajuda em andamento
   function cardProcesso(pedido: Pedido, papel: "SOLICITANTE" | "PRESTADOR") {
-    const solicitante = papel === "SOLICITANTE";
-    const podeExcluir =
-      solicitante && String(pedido.status).toUpperCase() === "ABERTO";
+    const souDono = papel === "SOLICITANTE";
+    const souAjudante = pedido.idAjudante === sessao?.id;
+    const candidatos = candidatosAbertos[pedido.id];
     return (
       <article
         key={`${papel}-${pedido.id}`}
-        className={`rounded-2xl border-l-4 bg-white p-5 shadow-sm ${solicitante ? "border-[var(--laranja)]" : "border-[var(--verde)]"}`}
+        className={`rounded-2xl border-l-4 bg-white p-5 shadow-sm ${souDono ? "border-[var(--laranja)]" : "border-[var(--verde)]"}`}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${solicitante ? "bg-orange-100 text-orange-800" : "bg-green-100 text-green-800"}`}
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${souAjudante ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}`}
             >
-              {solicitante ? "Você pediu ajuda" : "Você está ajudando"}
+              {souDono && pedido.status === "ABERTO"
+                ? pedido.tipoPublicacao === "OFERTA"
+                  ? `Você ofereceu${pedido.totalAceitas ? ` · ${pedido.totalAceitas} aceito(s)` : ""}`
+                  : "Você pediu ajuda"
+                : souAjudante
+                  ? "Você está ajudando"
+                  : "Você está recebendo ajuda"}
             </span>
-            <Link
-              to={`/pedido/${pedido.id}`}
-              className="mt-3 block font-bold text-[var(--azul)] hover:underline"
-            >
+            <Link to={`/pedido/${pedido.id}`} className="mt-3 block font-bold text-[var(--azul)] hover:underline">
               {pedido.titulo}
             </Link>
             <p className="mt-1 text-sm text-gray-600">
               <span className="mr-2 inline-block size-2 rounded-full bg-green-500" />
-              {nomeStatus(pedido.status)} · {valor(pedido)}
+              {NOMES_STATUS[pedido.status] || pedido.status} · {formatarValor(pedido)}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              navegar(
-                solicitante
-                  ? `/finalizacao?pedidoId=${pedido.id}`
-                  : `/confirmacao-recebimento?pedidoId=${pedido.id}`,
-              )
-            }
-            className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${solicitante ? "bg-[var(--laranja)]" : "bg-[var(--verde)]"}`}
-          >
-            {solicitante ? "Finalizar ajuda" : "Confirmar recebimento"}
-          </button>
+          {acaoPrincipal(pedido)}
         </div>
-        {podeExcluir && (
-          <button
-            type="button"
-            onClick={() => void excluirPedidoPublicado(pedido.id)}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-xs font-bold text-[var(--coral)] transition hover:bg-red-50"
-          >
-            <FaTrash /> Excluir ajuda publicada
-          </button>
+
+        {candidatos && (
+          <div className="mt-4 space-y-2 rounded-xl bg-[var(--creme)] p-3">
+            {candidatos.length ? (
+              candidatos.map((candidatura) => (
+                <div key={candidatura.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-3">
+                  <div>
+                    <Link to={`/perfil/${candidatura.idPrestador}`} className="font-semibold text-[var(--azul)] hover:underline">
+                      {candidatura.nomePrestador}
+                    </Link>
+                    <p className="flex items-center gap-1 text-xs text-gray-500">
+                      <FaStar className="text-[var(--laranja)]" />
+                      {candidatura.mediaEstrelasPrestador != null
+                        ? `${candidatura.mediaEstrelasPrestador.toFixed(1)} (${candidatura.totalAvaliacoesPrestador})`
+                        : "Sem avaliações"}{" "}
+                      · {NOMES_STATUS_CANDIDATURA[candidatura.status] || candidatura.status}
+                      {candidatura.emailPrestador ? ` · ${candidatura.emailPrestador}` : ""}
+                    </p>
+                  </div>
+                  {candidatura.status === "PENDENTE" && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void responderCandidato(candidatura, "ACEITA", pedido.tipoPublicacao === "OFERTA")
+                        }
+                        className="rounded-lg bg-[var(--verde)] px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        Aceitar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void responderCandidato(candidatura, "RECUSADA")}
+                        className="rounded-lg border border-[var(--coral)] px-3 py-1.5 text-xs font-bold text-[var(--coral)]"
+                      >
+                        Recusar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">Ainda não há candidatos.</p>
+            )}
+          </div>
         )}
-        <p className="mt-4 text-sm text-gray-500">
-          {solicitante
-            ? "Após a ajuda, registre o pagamento e deixe seu feedback para quem ajudou."
-            : "Após realizar a ajuda, confirme o valor recebido e deixe seu feedback para o solicitante."}
-        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {souDono && pedido.tipoPublicacao === "OFERTA" && pedido.status === "ABERTO" && !!pedido.totalAceitas && (
+            <>
+              <button
+                type="button"
+                onClick={() => void mudarStatus(pedido, "CONCLUIDO")}
+                className="rounded-lg bg-[var(--verde)] px-3 py-2 text-xs font-bold text-white"
+              >
+                Concluir oferta
+              </button>
+              <button
+                type="button"
+                onClick={() => navegar(`/confirmacao-recebimento?pedidoId=${pedido.id}`)}
+                className="rounded-lg border border-[var(--verde)] px-3 py-2 text-xs font-bold text-[var(--verde)]"
+              >
+                Confirmar pagamentos
+              </button>
+            </>
+          )}
+          {souDono && pedido.status === "ABERTO" && !pedido.totalAceitas && (
+            <button
+              type="button"
+              onClick={() => void excluirPedidoPublicado(pedido.id)}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-xs font-bold text-[var(--coral)] transition hover:bg-red-50"
+            >
+              <FaTrash /> Excluir publicação
+            </button>
+          )}
+          {souDono && (pedido.status === "ABERTO" || pedido.status === "EM_ANDAMENTO") && (
+            <button
+              type="button"
+              onClick={() => void mudarStatus(pedido, "CANCELADO")}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          )}
+          {!souDono && minhasAceitas[pedido.id] && (pedido.status === "ABERTO" || pedido.status === "EM_ANDAMENTO") && (
+            <button
+              type="button"
+              onClick={() => void desistir(pedido)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Desistir
+            </button>
+          )}
+        </div>
       </article>
     );
   }
@@ -671,15 +529,11 @@ export default function HomePrototipo() {
               <div className="mt-4 max-h-96 space-y-2 overflow-y-auto">
                 {notificacoes.length ? (
                   notificacoes.map((notificacao) => {
-                    const candidato = ehCandidato(notificacao)
-                      ? dadosCandidato(notificacao)
-                      : null;
-                    const pedidoId =
-                      notificacao.pedidoId || notificacao.pedido?.id;
-                    const escolhido =
-                      pedidoId !== undefined &&
-                      candidatosEscolhidos[String(pedidoId)] === candidato?.id;
-                    return candidato ? (
+                    const candidatura = notificacao.candidatura;
+                    const pedidoId = notificacao.idPedido;
+                    const podeResponder =
+                      candidatura?.status === "PENDENTE" && notificacao.pedido?.status === "ABERTO";
+                    return candidatura ? (
                       <article
                         key={notificacao.id}
                         className={`rounded-xl p-4 ${notificacao.lida ? "bg-gray-50" : "bg-[var(--verde)]/10"}`}
@@ -688,7 +542,7 @@ export default function HomePrototipo() {
                           <FaUserCheck className="mt-1 shrink-0 text-[var(--verde)]" />
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold text-[var(--azul)]">
-                              {candidato.nome} quer ajudar
+                              {candidatura.nomePrestador} se candidatou
                             </p>
                             <p className="mt-1 text-xs font-bold text-[var(--laranja)]">
                               Ajuda:{" "}
@@ -696,31 +550,44 @@ export default function HomePrototipo() {
                                 `Pedido #${pedidoId}`}
                             </p>
                             <p className="mt-1 text-sm text-gray-600">
-                              {String(
-                                notificacao.mensagem ||
-                                  "Esta pessoa aceitou sua solicitação de ajuda.",
-                              )}
+                              {notificacao.mensagem} · Situação: {NOMES_STATUS_CANDIDATURA[candidatura.status] || candidatura.status}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <Link
-                                to={`/perfil/${candidato.id}`}
+                                to={`/perfil/${candidatura.idPrestador}`}
                                 onClick={() => void marcarComoLida(notificacao)}
                                 className="rounded-lg border border-[var(--azul)] px-3 py-2 text-sm font-semibold text-[var(--azul)]"
                               >
                                 Ver perfil
                               </Link>
-                              <button
-                                type="button"
-                                disabled={escolhido}
-                                onClick={() =>
-                                  void escolherCandidato(notificacao)
-                                }
-                                className="rounded-lg bg-[var(--verde)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {escolhido
-                                  ? "Prestador escolhido"
-                                  : "Escolher prestador"}
-                              </button>
+                              {podeResponder && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void marcarComoLida(notificacao);
+                                      void responderCandidato(
+                                        candidatura,
+                                        "ACEITA",
+                                        notificacao.pedido?.tipoPublicacao === "OFERTA",
+                                      );
+                                    }}
+                                    className="rounded-lg bg-[var(--verde)] px-3 py-2 text-sm font-semibold text-white"
+                                  >
+                                    Aceitar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void marcarComoLida(notificacao);
+                                      void responderCandidato(candidatura, "RECUSADA");
+                                    }}
+                                    className="rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-semibold text-[var(--coral)]"
+                                  >
+                                    Recusar
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                           {notificacao.lida && (
@@ -748,22 +615,10 @@ export default function HomePrototipo() {
                         >
                           <FaBell className="mt-1 shrink-0 text-[var(--verde)]" />
                           <span>
-                            {notificacao.pedidoId || notificacao.pedido?.id ? (
-                              <>
-                                <strong className="block text-[var(--laranja)]">
-                                  Ajuda:{" "}
-                                  {notificacao.pedido?.titulo ||
-                                    `Pedido #${notificacao.pedidoId || notificacao.pedido?.id}`}
-                                </strong>
-                                <span className="mt-1 block">
-                                  {String(
-                                    notificacao.mensagem || "Nova notificação",
-                                  )}
-                                </span>
-                              </>
-                            ) : (
-                              String(notificacao.mensagem || "Nova notificação")
-                            )}
+                            <strong className="block text-[var(--laranja)]">
+                              Ajuda: {notificacao.pedido?.titulo || `Pedido #${notificacao.idPedido}`}
+                            </strong>
+                            <span className="mt-1 block">{notificacao.mensagem}</span>
                           </span>
                           {notificacao.lida && (
                             <FaCheck className="ml-auto mt-1 shrink-0 text-[var(--verde)]" />
@@ -819,11 +674,11 @@ export default function HomePrototipo() {
           >
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-white/75">
-                Sou solicitante
+                Preciso de ajuda
               </p>
-              <h2 className="mt-1 text-2xl font-bold">Preciso de ajuda</h2>
+              <h2 className="mt-1 text-2xl font-bold">Nova publicação</h2>
               <p className="mt-2 text-sm">
-                Publique um pedido para outras pessoas ajudarem
+                Peça uma ajuda ou ofereça ajuda para a vizinhança
               </p>
             </div>
             <FaPlus className="text-6xl" />
@@ -834,7 +689,7 @@ export default function HomePrototipo() {
           >
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-white/75">
-                Sou prestador
+                Quero ajudar
               </p>
               <h2 className="mt-1 text-2xl font-bold">Quero ajudar</h2>
               <p className="mt-2 text-sm">Encontre oportunidades disponíveis</p>
@@ -887,22 +742,26 @@ export default function HomePrototipo() {
                     {recomendadaDisponivel.titulo}
                   </Link>
                   <p className="text-sm text-gray-600">
-                    {valor(recomendadaDisponivel)} ·{" "}
-                    {recomendadaDisponivel.bairro || "Bairro não informado"}
+                    {formatarValor(recomendadaDisponivel)} ·{" "}
+                    {recomendadaDisponivel.tipoPublicacao === "OFERTA" ? "Oferta de ajuda" : "Pedido de ajuda"}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    Categoria: {categoria(recomendadaDisponivel, categorias)} ·{" "}
-                    Publicado por:{" "}
-                    {recomendadaDisponivel.solicitante?.nome || "outro usuário"}
+                    Categoria: {recomendadaDisponivel.nomeCategoria} · Publicado por:{" "}
+                    {recomendadaDisponivel.nomeSolicitante}
                   </p>
+                  {chanceIA(recomendadaDisponivel) != null && (
+                    <p className="mt-2 inline-block rounded-full bg-[var(--verde)] px-3 py-1 text-xs font-bold text-white">
+                      ✨ Recomendado pela IA · {chanceIA(recomendadaDisponivel)}% de compatibilidade
+                    </p>
+                  )}
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => void aceitar(recomendadaDisponivel.id)}
+                onClick={() => void candidatar(recomendadaDisponivel)}
                 className="rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white"
               >
-                Aceitar esta ajuda
+                {textoCandidatar(recomendadaDisponivel)}
               </button>
             </article>
           ) : (
@@ -924,12 +783,8 @@ export default function HomePrototipo() {
           <div className="mt-4 flex flex-wrap gap-2">
             {tags.length ? (
               tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-[var(--creme)] px-4 py-2 text-sm font-semibold"
-                >
-                  {categorias.find((item) => String(item.id) === String(tag))
-                    ?.nome || tag}
+                <span key={tag.id} className="rounded-full bg-[var(--creme)] px-4 py-2 text-sm font-semibold">
+                  {tag.nome}
                 </span>
               ))
             ) : (
@@ -976,7 +831,7 @@ export default function HomePrototipo() {
               {aceitos.length > 0 && (
                 <div>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--verde)]">
-                    Ajudas que aceitei
+                    Ajudas em que fui escolhido
                   </h3>
                   <div className="space-y-3">
                     {aceitos.map((pedido) => cardProcesso(pedido, "PRESTADOR"))}
@@ -1003,10 +858,22 @@ export default function HomePrototipo() {
                 Oportunidades disponíveis
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                {tags.length
-                  ? "Pedidos abertos compatíveis com as categorias que você escolheu."
-                  : "Pedidos abertos de outros usuários. Escolha categorias no perfil para receber sugestões mais específicas."}
+                {tags.length && soMinhasCategorias
+                  ? "Publicações abertas nas categorias que você escolheu."
+                  : tags.length
+                    ? "Todas as publicações abertas de outras pessoas."
+                    : "Publicações abertas de outras pessoas. Escolha categorias no perfil para receber sugestões mais específicas."}
+                {Object.keys(rankingIA).length > 0 && " A IA coloca as mais compatíveis com você primeiro."}
               </p>
+              {tags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSoMinhasCategorias((atual) => !atual)}
+                  className="mt-2 text-sm font-bold text-[var(--verde)] hover:underline"
+                >
+                  {soMinhasCategorias ? "Ver todas as categorias" : "Ver só as minhas categorias"}
+                </button>
+              )}
             </div>
             <span className="rounded-full bg-[var(--azul)] px-3 py-1 text-sm font-bold text-white">
               {oportunidades.length}{" "}
@@ -1027,8 +894,14 @@ export default function HomePrototipo() {
                 </Link>
                 <p className="mt-2 text-sm text-gray-600">{pedido.descricao}</p>
                 <p className="mt-4 text-sm font-semibold text-[var(--verde)]">
-                  {valor(pedido)} · {pedido.bairro || "Bairro não informado"}
+                  {formatarValor(pedido)} · {pedido.nomeCategoria} ·{" "}
+                  {pedido.tipoPublicacao === "OFERTA" ? "Oferta" : "Pedido de ajuda"}
                 </p>
+                {chanceIA(pedido) != null && (
+                  <p className="mt-2 inline-block rounded-full bg-[var(--creme)] px-3 py-1 text-xs font-bold text-[var(--verde)]">
+                    ✨ IA: {chanceIA(pedido)}% de compatibilidade
+                  </p>
+                )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     to={`/pedido/${pedido.id}`}
@@ -1038,34 +911,21 @@ export default function HomePrototipo() {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => void aceitar(pedido.id)}
+                    onClick={() => void candidatar(pedido)}
                     className="rounded-xl bg-[var(--laranja)] px-4 py-2 text-sm font-bold text-white"
                   >
-                    Aceitar pedido
+                    {textoCandidatar(pedido)}
                   </button>
                 </div>
               </article>
             ))}
           </div>
           {!oportunidades.length && (
-            <div className="rounded-2xl bg-white p-5 text-sm text-gray-600">
-              <p className="font-semibold text-[var(--azul)]">
-                {pedidos.length
-                  ? "Nenhuma oportunidade combina com seu perfil agora."
-                  : "Ainda não há pedidos publicados por outros usuários."}
-              </p>
-              <p className="mt-1">
-                {pedidos.length
-                  ? "Confira suas categorias no perfil ou aguarde novas oportunidades."
-                  : "Quando alguém publicar uma ajuda no Render, ela aparecerá aqui para você ver os detalhes e enviar sua candidatura."}
-              </p>
-              <Link
-                to="/publicar-pedido"
-                className="mt-4 inline-flex rounded-xl bg-[var(--laranja)] px-4 py-2 font-bold text-white"
-              >
-                Publicar o primeiro pedido
-              </Link>
-            </div>
+            <p className="rounded-2xl bg-white p-5 text-sm text-gray-500">
+              {tags.length && soMinhasCategorias
+                ? "Nenhuma oportunidade nas suas categorias no momento. Toque em “Ver todas as categorias” para ver as demais."
+                : "Nenhuma oportunidade aberta no momento."}
+            </p>
           )}
         </section>
       </div>

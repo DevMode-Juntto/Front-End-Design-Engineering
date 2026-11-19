@@ -1,20 +1,40 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   FaArrowLeft,
   FaClipboardList,
   FaCommentDots,
   FaEdit,
+  FaExclamationTriangle,
   FaHistory,
   FaListAlt,
   FaHandsHelping,
   FaPaperPlane,
+  FaShieldAlt,
   FaStar,
   FaTrash,
   FaWallet,
 } from "react-icons/fa";
-import { api, obterSessao } from "../../services/api";
-import type { Comentario, Pedido, SolicitacaoAjuda } from "../../types/types";
+import {
+  api,
+  formatarData,
+  formatarValor,
+  NOMES_STATUS,
+  NOMES_STATUS_CANDIDATURA,
+  NOMES_STATUS_PAGAMENTO,
+  obterSessao,
+} from "../../services/api";
+import { API_PYTHON_DISPONIVEL, apiPython } from "../../services/apiPython";
+import type { Candidatura, Denuncia, Feedback, Pedido } from "../../types/types";
+
+// uma avaliação escrita pelo usuário (um dos lados de um feedback)
+type MinhaAvaliacao = {
+  feedback: Feedback;
+  estrelas: number;
+  texto?: string | null;
+  sobre: string;
+  data?: string | null;
+};
 
 type AbaHistorico =
   | "servicos"
@@ -22,7 +42,8 @@ type AbaHistorico =
   | "candidaturas"
   | "pagamentos"
   | "comentarios"
-  | "comentariosPedido";
+  | "comentariosPedido"
+  | "denuncias";
 
 const abasHistorico = [
   {
@@ -42,22 +63,23 @@ const abasHistorico = [
   },
   {
     id: "pagamentos" as const,
-    titulo: "Pagamentos registrados",
+    titulo: "Pagamentos",
     icone: FaWallet,
   },
   {
     id: "comentarios" as const,
-    titulo: "Meus comentários",
+    titulo: "Minhas avaliações",
     icone: FaCommentDots,
   },
   {
     id: "comentariosPedido" as const,
-    titulo: "Comentários por pedido",
+    titulo: "Avaliações por pedido",
     icone: FaCommentDots,
   },
-];
+  { id: "denuncias" as const, titulo: "Minhas denúncias", icone: FaShieldAlt },
+  // "Minhas denúncias" depende da API Python: só aparece quando ela está configurada
+].filter((item) => item.id !== "denuncias" || API_PYTHON_DISPONIVEL);
 
-// mostra os pedidos do histórico e as ações disponíveis
 function ListaPedidos({
   titulo,
   id,
@@ -71,7 +93,7 @@ function ListaPedidos({
   ativo: boolean;
   pedidos: Pedido[];
   editavel?: boolean;
-  aoExcluir?: (id: string | number) => void;
+  aoExcluir?: (id: string) => void;
 }) {
   return (
     <section
@@ -107,13 +129,9 @@ function ListaPedidos({
                     </Link>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full bg-white px-2.5 py-1 font-bold text-[var(--azul)]">
-                        {nomeStatus(pedido.status)}
+                        {NOMES_STATUS[pedido.status] || pedido.status}
                       </span>
-                      {pedido.valor !== undefined && (
-                        <span className="font-semibold text-[var(--verde)]">
-                          R$ {pedido.valor.toFixed(2).replace(".", ",")}
-                        </span>
-                      )}
+                      <span className="font-semibold text-[var(--verde)]">{formatarValor(pedido)}</span>
                     </div>
                   </div>
                   {editavel && aberto && (
@@ -169,56 +187,30 @@ function ListaPedidos({
   );
 }
 
-// troca o status técnico por um nome mais fácil
-function nomeStatus(status?: string) {
-  const nomes: Record<string, string> = {
-    ABERTO: "Aguardando prestador",
-    ACEITO: "Prestador escolhido",
-    EM_ANDAMENTO: "Em andamento",
-    AGUARDANDO_CONFIRMACAO: "Aguardando confirmação",
-    CONCLUIDO: "Concluído",
-    FINALIZADO: "Finalizado",
-    CANCELADO: "Cancelado",
-  };
-  return nomes[String(status || "").toUpperCase()] || "Registro de atividade";
-}
-
-// pega os dados principais do comentário p mostrar na tela
-function metaComentario(comentario: Comentario) {
-  const dados = comentario as Comentario & {
-    pedidoId?: string | number;
-    data?: string;
-    criadoEm?: string;
-    sobreUsuario?: { nome?: string };
-    pedido?: { titulo?: string };
-  };
-  const pessoa =
-    dados.sobreUsuario?.nome ||
-    (comentario.sobreUsuarioId !== undefined
-      ? `Usuário #${comentario.sobreUsuarioId}`
-      : "Pessoa da ajuda");
-  const autor = comentario.autor?.nome || "Usuário da ajuda";
-  const data = dados.data || dados.criadoEm;
-  return {
-    pessoa,
-    autor,
-    pedidoId: dados.pedidoId,
-    pedido: dados.pedido?.titulo,
-    data,
-  };
-}
-
-// mostra o nome do pedido ligado à candidatura
-function nomeAceite(aceite: SolicitacaoAjuda) {
-  const dados = aceite as SolicitacaoAjuda & {
-    pedido?: { titulo?: string };
-    titulo?: string;
-  };
-  return (
-    dados.pedido?.titulo ||
-    dados.titulo ||
-    `Pedido #${aceite.pedidoId || aceite.id}`
-  );
+// separa as avaliações que o usuário escreveu (o lado em que ele é o autor)
+function avaliacoesEscritas(feedbacks: Feedback[], usuarioId: string): MinhaAvaliacao[] {
+  return feedbacks.flatMap((feedback) => {
+    const lista: MinhaAvaliacao[] = [];
+    // quem recebeu a ajuda escreve o lado do ajudante
+    if (feedback.idAjudado === usuarioId && feedback.estrelasAjudante != null)
+      lista.push({
+        feedback,
+        estrelas: feedback.estrelasAjudante,
+        texto: feedback.feedbackAjudante,
+        sobre: feedback.nomeAjudante,
+        data: feedback.dtAvaliacaoAjudante,
+      });
+    // quem ajudou escreve o lado de quem recebeu
+    if (feedback.idAjudante === usuarioId && feedback.estrelasAjudado != null)
+      lista.push({
+        feedback,
+        estrelas: feedback.estrelasAjudado,
+        texto: feedback.feedbackAjudado,
+        sobre: feedback.nomeAjudado,
+        data: feedback.dtAvaliacaoAjudado,
+      });
+    return lista;
+  });
 }
 
 // reúne as informações e controla as abas do histórico
@@ -228,165 +220,170 @@ export default function Historico() {
   const [aba, setAba] = useState<AbaHistorico>("servicos");
   const [servicos, setServicos] = useState<Pedido[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [aceites, setAceites] = useState<SolicitacaoAjuda[]>([]);
-  const [comentarios, setComentarios] = useState<Comentario[]>([]);
-  const [comentariosPorPedido, setComentariosPorPedido] = useState<
-    Record<string, Comentario[]>
-  >({});
+  const [candidaturas, setCandidaturas] = useState<Candidatura[]>([]);
+  const [feedbacksPorPedido, setFeedbacksPorPedido] = useState<Record<string, Feedback[]>>({});
+  const [denuncias, setDenuncias] = useState<Denuncia[]>([]);
+  const [avisoDenuncias, setAvisoDenuncias] = useState("");
   const [carregando, setCarregando] = useState(true);
-  const [comentarioDetalhado, setComentarioDetalhado] =
-    useState<Comentario | null>(null);
+  const [avaliacaoDetalhada, setAvaliacaoDetalhada] = useState<MinhaAvaliacao | null>(null);
   const [erro, setErro] = useState("");
 
-  // busca os dados do usuário p preencher o histórico
-  const carregar = useCallback(async () => {
+  const minhasAvaliacoes = idUsuario
+    ? avaliacoesEscritas(Object.values(feedbacksPorPedido).flat(), idUsuario)
+    : [];
+
+  // busca os dados do usuário para preencher o histórico
+  async function carregar() {
     if (idUsuario === undefined) return;
     setCarregando(true);
     try {
-      const [
-        servicosRecebidos,
-        pedidosRecebidos,
-        aceitesRecebidos,
-        comentariosRecebidos,
-      ] = await Promise.all([
+      const [participacoes, publicados, minhasCandidaturas] = await Promise.all([
         api.listarAtividades(idUsuario, "PRESTADOR"),
         api.listarAtividades(idUsuario, "SOLICITANTE"),
-        api.listarAceites(idUsuario),
-        api.listarComentariosAutor(idUsuario),
+        api.listarMinhasCandidaturas(idUsuario),
       ]);
+      const todos = [...participacoes, ...publicados].filter(
+        (pedido, indice, lista) => lista.findIndex((item) => item.id === pedido.id) === indice,
+      );
+      // serviços realizados: onde fui o ajudante e o serviço terminou
       setServicos(
-        servicosRecebidos.filter((pedido) => pedido.status === "CONCLUIDO"),
+        todos.filter(
+          (pedido) =>
+            pedido.idAjudante === idUsuario && pedido.status === "CONCLUIDO",
+        ),
       );
-      setPedidos(pedidosRecebidos);
-      setAceites(aceitesRecebidos);
-      setComentarios(comentariosRecebidos);
-      const pedidosFinalizados = [
-        ...servicosRecebidos,
-        ...pedidosRecebidos,
-      ].filter(
-        (pedido, indice, lista) =>
-          lista.findIndex((item) => String(item.id) === String(pedido.id)) ===
-          indice,
-      );
-      const comentariosDosPedidos = await Promise.all(
-        pedidosFinalizados.map(async (pedido) => {
+      setPedidos(publicados);
+      setCandidaturas(minhasCandidaturas);
+      const concluidos = todos.filter((pedido) => pedido.status === "CONCLUIDO");
+      const feedbacks = await Promise.all(
+        concluidos.map(async (pedido) => {
           try {
-            return [
-              String(pedido.id),
-              await api.listarComentariosPedido(pedido.id),
-            ] as const;
+            return [pedido.id, await api.listarFeedbacksPedido(pedido.id)] as const;
           } catch {
-            return [String(pedido.id), []] as const;
+            return [pedido.id, [] as Feedback[]] as const;
           }
         }),
       );
-      setComentariosPorPedido(Object.fromEntries(comentariosDosPedidos));
+      setFeedbacksPorPedido(Object.fromEntries(feedbacks));
     } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível carregar o histórico.",
-      );
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível carregar o histórico.");
     } finally {
       setCarregando(false);
     }
-  }, [idUsuario]);
+    // denúncias ficam na API Python: se ela estiver fora do ar, o resto do histórico continua funcionando
+    if (API_PYTHON_DISPONIVEL) try {
+      setDenuncias(await apiPython.listarDenuncias(idUsuario));
+      setAvisoDenuncias("");
+    } catch {
+      setDenuncias([]);
+      setAvisoDenuncias("Não foi possível carregar as denúncias (serviço de moderação indisponível).");
+    }
+  }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void carregar(), 0);
-    return () => window.clearTimeout(timer);
-  }, [carregar]);
+    void carregar();
+  }, [sessao?.id]);
 
   // exclui um pedido aberto depois da confirmação
-  async function excluirPedido(id: string | number) {
+  async function excluirPedido(id: string) {
     if (idUsuario === undefined) return;
     if (!window.confirm("Tem certeza que deseja excluir este pedido?")) return;
     try {
       await api.excluirPedido(id, idUsuario);
       await carregar();
     } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível excluir o pedido.",
-      );
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível excluir o pedido");
     }
   }
 
-  // edita o texto de um comentário já criado
-  async function editarComentario(comentario: Comentario) {
-    const textoAtual = comentario.texto || comentario.comentario || "";
-    const texto = window.prompt("Edite seu comentário:", textoAtual);
-    if (texto === null || !texto.trim()) return;
-    try {
-      await api.editarComentario(comentario.id, { texto: texto.trim() });
-      await carregar();
-    } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível editar o comentário.",
-      );
-    }
-  }
-
-  // busca e abre os detalhes de um comentário
-  async function abrirComentario(comentario: Comentario) {
-    try {
-      setComentarioDetalhado(await api.buscarComentario(comentario.id));
-    } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível abrir o comentário.",
-      );
-    }
-  }
-
-  // exclui um comentário após confirmar a ação
-  async function excluirComentario(id: string | number) {
+  // edita a nota e o texto de uma avaliação (até 7 dias)
+  async function editarAvaliacao(avaliacao: MinhaAvaliacao) {
     if (idUsuario === undefined) return;
-    if (!window.confirm("Excluir este comentário?")) return;
-    try {
-      await api.excluirComentario(id, idUsuario);
-      await carregar();
-    } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível excluir o comentário.",
-      );
-    }
-  }
-
-  // desiste de uma candidatura feita p um pedido
-  async function desistirAceite(aceite: SolicitacaoAjuda) {
-    if (idUsuario === undefined) return;
-    if (
-      !window.confirm(
-        "Desistir desta candidatura? Você não poderá aceitar este mesmo pedido novamente.",
-      )
-    )
+    const nota = window.prompt("Nova nota (1 a 5):", String(avaliacao.estrelas));
+    if (nota === null) return;
+    const estrelas = Number(nota);
+    if (!Number.isInteger(estrelas) || estrelas < 1 || estrelas > 5) {
+      setErro("A nota deve ser um número de 1 a 5.");
       return;
+    }
+    const texto = window.prompt("Edite seu comentário (opcional):", avaliacao.texto || "");
+    if (texto === null) return;
     try {
-      await api.desistirAceite(aceite.id, idUsuario);
+      await api.editarFeedback(avaliacao.feedback.id, {
+        usuarioId: idUsuario,
+        estrelas,
+        texto: texto.trim() || undefined,
+      });
+      await carregar();
+    } catch (erroApi) {
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível editar a avaliação.");
+    }
+  }
+
+  // apaga a avaliação do usuário (o outro lado continua)
+  async function excluirAvaliacao(avaliacao: MinhaAvaliacao) {
+    if (idUsuario === undefined) return;
+    if (!window.confirm("Excluir esta avaliação?")) return;
+    try {
+      await api.excluirFeedback(avaliacao.feedback.id, idUsuario);
+      await carregar();
+    } catch (erroApi) {
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível excluir a avaliação.");
+    }
+  }
+
+  // desiste de uma candidatura (não poderá se candidatar de novo ao mesmo pedido)
+  async function desistirCandidatura(candidatura: Candidatura) {
+    if (idUsuario === undefined) return;
+    if (!window.confirm("Desistir desta candidatura? Você não poderá se candidatar a este pedido novamente.")) return;
+    try {
+      await api.desistirCandidatura(candidatura.id, idUsuario);
+      await carregar();
+    } catch (erroApi) {
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível desistir da candidatura.");
+    }
+  }
+
+  // altera os dados de uma denúncia que ainda esta aberta
+  async function editarDenuncia(denuncia: Denuncia) {
+    const motivo = window.prompt(
+      "Edite o motivo da denúncia:",
+      denuncia.motivo || "",
+    );
+    if (motivo === null || !motivo.trim()) return;
+    const mensagem =
+      window.prompt("Edite a descrição:", denuncia.mensagem || "") || "";
+    try {
+      await apiPython.editarDenuncia(denuncia.id, {
+        motivo: motivo.trim(),
+        mensagem: mensagem.trim(),
+      });
       await carregar();
     } catch (erroApi) {
       setErro(
         erroApi instanceof Error
           ? erroApi.message
-          : "Não foi possível desistir da candidatura.",
+          : "Não foi possível editar a denúncia.",
       );
     }
   }
 
-  // encontra o título do pedido pelo id
-  function tituloPedido(id: string | number) {
-    const pedido = [...servicos, ...pedidos].find(
-      (item) => String(item.id) === String(id),
-    );
-    return pedido?.titulo || `Pedido #${id}`;
+  // retira uma denúncia depois da confirmação
+  async function excluirDenuncia(id: string) {
+    if (idUsuario === undefined) return;
+    if (!window.confirm("Retirar esta denúncia?")) return;
+    try {
+      await apiPython.excluirDenuncia(id, idUsuario);
+      await carregar();
+    } catch (erroApi) {
+      setErro(
+        erroApi instanceof Error
+          ? erroApi.message
+          : "Não foi possível retirar a denúncia.",
+      );
+    }
   }
+
 
   return (
     <main className="min-h-screen bg-[var(--creme)] px-4 py-8 sm:px-6 sm:py-12">
@@ -472,34 +469,29 @@ export default function Historico() {
                   Minhas candidaturas
                 </h2>
                 <p className="mt-2 text-sm text-gray-500">
-                  Pedidos nos quais você se ofereceu para ajudar.
+                  Publicações em que você se candidatou.
                 </p>
-                {aceites.length ? (
+                {candidaturas.length ? (
                   <div className="mt-4 space-y-3">
-                    {aceites.map((aceite) => (
-                      <article
-                        key={aceite.id}
-                        className="rounded-xl bg-[var(--creme)] p-4"
-                      >
-                        {aceite.pedidoId ? (
-                          <Link
-                            to={`/pedido/${aceite.pedidoId}?origem=historico`}
-                            className="font-bold text-[var(--azul)] hover:underline"
-                          >
-                            {nomeAceite(aceite)}
-                          </Link>
-                        ) : (
-                          <h3 className="font-bold text-[var(--azul)]">
-                            {nomeAceite(aceite)}
-                          </h3>
-                        )}
+                    {candidaturas.map((candidatura) => (
+                      <article key={candidatura.id} className="rounded-xl bg-[var(--creme)] p-4">
+                        <Link
+                          to={`/pedido/${candidatura.idPedido}?origem=historico`}
+                          className="font-bold text-[var(--azul)] hover:underline"
+                        >
+                          {candidatura.tituloPedido}
+                        </Link>
                         <p className="mt-1 text-sm text-gray-600">
-                          Status: {aceite.status || "PENDENTE"}
+                          Candidatura: {NOMES_STATUS_CANDIDATURA[candidatura.status] || candidatura.status} ·
+                          Pagamento: {NOMES_STATUS_PAGAMENTO[candidatura.statusPagamento] || candidatura.statusPagamento} ·
+                          Pedido:{" "}
+                          {NOMES_STATUS[candidatura.statusPedido] || candidatura.statusPedido}
                         </p>
-                        {String(aceite.status).toUpperCase() === "PENDENTE" && (
+                        <p className="mt-1 text-xs text-gray-500">Enviada em {formatarData(candidatura.dtOferta)}</p>
+                        {candidatura.status === "PENDENTE" && (
                           <button
                             type="button"
-                            onClick={() => void desistirAceite(aceite)}
+                            onClick={() => void desistirCandidatura(candidatura)}
                             className="mt-3 rounded-lg border border-[var(--coral)] px-3 py-2 text-xs font-bold text-[var(--coral)]"
                           >
                             Desistir da candidatura
@@ -529,12 +521,12 @@ export default function Historico() {
                   Pagamentos registrados
                 </h2>
                 <p className="mt-4 text-sm text-gray-500">
-                  Os pagamentos aparecem associados aos pedidos retornados pelo
-                  backend.
+                  O pagamento é feito fora do Junttô; aqui aparece a confirmação de quem recebeu.
                 </p>
                 <div className="mt-4 space-y-3">
                   {[...servicos, ...pedidos]
-                    .filter((pedido) => pedido.valor !== undefined)
+                    .filter((pedido, indice, lista) => lista.findIndex((item) => item.id === pedido.id) === indice)
+                    .filter((pedido) => pedido.status === "CONCLUIDO" && pedido.total != null)
                     .map((pedido) => (
                       <Link
                         key={`pagamento-${pedido.id}`}
@@ -543,14 +535,16 @@ export default function Historico() {
                       >
                         <span className="block font-bold">{pedido.titulo}</span>
                         <span className="mt-1 block text-[var(--verde)]">
-                          Valor: R$ {pedido.valor?.toFixed(2).replace(".", ",")}
+                          {pedido.tipoPublicacao === "OFERTA"
+                            ? `Oferta: R$ ${pedido.total?.toFixed(2).replace(".", ",")} por interessado`
+                            : `Total: R$ ${pedido.total?.toFixed(2).replace(".", ",")} · ${
+                                NOMES_STATUS_PAGAMENTO[pedido.statusPagamento || ""] || pedido.statusPagamento || ""
+                              }`}
                         </span>
                       </Link>
                     ))}
                 </div>
-                {![...servicos, ...pedidos].some(
-                  (pedido) => pedido.valor !== undefined,
-                ) && (
+                {![...servicos, ...pedidos].some((pedido) => pedido.status === "CONCLUIDO" && pedido.total != null) && (
                   <div className="mt-4 rounded-xl bg-[var(--creme)] p-6 text-center">
                     <FaWallet className="mx-auto text-2xl text-[var(--laranja)]" />
                     <p className="mt-3 font-bold text-[var(--azul)]">
@@ -569,60 +563,45 @@ export default function Historico() {
               >
                 <h2 className="flex items-center gap-3 text-lg font-bold text-[var(--azul)]">
                   <FaCommentDots className="text-[var(--laranja)]" />
-                  Meus comentários
+                  Minhas avaliações
                 </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Comentários que você escreveu sobre outras pessoas.
-                </p>
-                {comentarios.length ? (
+                <p className="mt-2 text-sm text-gray-500">Avaliações que você deu para outras pessoas.</p>
+                {minhasAvaliacoes.length ? (
                   <div className="mt-4 space-y-3">
-                    {comentarios.map((comentario) => (
+                    {minhasAvaliacoes.map((avaliacao) => (
                       <article
-                        key={comentario.id}
+                        key={`${avaliacao.feedback.id}-${avaliacao.sobre}`}
                         className="rounded-xl bg-[var(--creme)] p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                              Comentário #{comentario.id}
+                              {avaliacao.feedback.tituloPedido}
                             </p>
-                            <p className="mt-1 text-sm font-semibold text-[var(--azul)]">
-                              Sobre: {metaComentario(comentario).pessoa}
-                            </p>
+                            <p className="mt-1 text-sm font-semibold text-[var(--azul)]">Sobre: {avaliacao.sobre}</p>
                           </div>
-                          {comentario.nota !== undefined && (
-                            <span className="flex items-center gap-1 text-sm font-bold text-[var(--laranja)]">
-                              <FaStar /> {comentario.nota}/5
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-4 rounded-xl bg-white p-3 text-sm leading-relaxed text-[var(--azul)]">
-                          “
-                          {comentario.texto ||
-                            comentario.comentario ||
-                            "Sem texto"}
-                          ”
-                        </p>
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs text-gray-500">
-                            {metaComentario(comentario).pedidoId
-                              ? `Pedido #${metaComentario(comentario).pedidoId}`
-                              : "Comentário da sua atividade"}
-                            {metaComentario(comentario).data
-                              ? ` · ${metaComentario(comentario).data}`
-                              : ""}
+                          <span className="flex items-center gap-1 text-sm font-bold text-[var(--laranja)]">
+                            <FaStar /> {avaliacao.estrelas}/5
                           </span>
+                        </div>
+                        {avaliacao.texto && (
+                          <p className="mt-4 rounded-xl bg-white p-3 text-sm leading-relaxed text-[var(--azul)]">
+                            “{avaliacao.texto}”
+                          </p>
+                        )}
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-gray-500">{formatarData(avaliacao.data)}</span>
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => void abrirComentario(comentario)}
+                              onClick={() => setAvaliacaoDetalhada(avaliacao)}
                               className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[var(--azul)]"
                             >
                               Ver detalhes
                             </button>
                             <button
                               type="button"
-                              onClick={() => void editarComentario(comentario)}
+                              onClick={() => void editarAvaliacao(avaliacao)}
                               className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[var(--azul)]"
                             >
                               <FaEdit className="mr-1 inline" />
@@ -630,9 +609,7 @@ export default function Historico() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                void excluirComentario(comentario.id)
-                              }
+                              onClick={() => void excluirAvaliacao(avaliacao)}
                               className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[var(--coral)]"
                             >
                               <FaTrash className="mr-1 inline" />
@@ -646,13 +623,8 @@ export default function Historico() {
                 ) : (
                   <div className="mt-4 rounded-xl bg-[var(--creme)] p-6 text-center">
                     <FaCommentDots className="mx-auto text-2xl text-[var(--laranja)]" />
-                    <p className="mt-3 font-bold text-[var(--azul)]">
-                      Você ainda não fez comentários.
-                    </p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Depois de uma ajuda concluída, avalie a experiência por
-                      aqui.
-                    </p>
+                    <p className="mt-3 font-bold text-[var(--azul)]">Você ainda não avaliou ninguém.</p>
+                    <p className="mt-1 text-sm text-gray-500">Depois de uma ajuda concluída, avalie a experiência.</p>
                   </div>
                 )}
               </section>
@@ -662,85 +634,129 @@ export default function Historico() {
               >
                 <h2 className="flex items-center gap-3 text-lg font-bold text-[var(--azul)]">
                   <FaCommentDots className="text-[var(--verde)]" />
-                  Comentários por pedido
+                  Avaliações por pedido
                 </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Veja os comentários agrupados em cada ajuda concluída.
-                </p>
-                {Object.entries(comentariosPorPedido).some(
-                  ([, itens]) => itens.length > 0,
-                ) ? (
+                <p className="mt-2 text-sm text-gray-500">As duas avaliações de cada ajuda concluída.</p>
+                {Object.values(feedbacksPorPedido).some((itens) => itens.length > 0) ? (
                   <div className="space-y-3">
-                    {Object.entries(comentariosPorPedido).map(
-                      ([pedidoId, itens]) =>
-                        itens.length ? (
-                          <div
-                            key={pedidoId}
-                            className="mt-4 rounded-xl bg-[var(--creme)] p-3"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                                  Comentários da ajuda
-                                </p>
-                                <p className="mt-1 font-bold text-[var(--azul)]">
-                                  {tituloPedido(pedidoId)}
-                                </p>
-                              </div>
-                              <Link
-                                to={`/pedido/${pedidoId}?origem=historico`}
-                                className="text-xs font-bold text-[var(--azul)] hover:underline"
-                              >
-                                Ver pedido →
-                              </Link>
-                            </div>
-                            {itens.map((comentario) => (
-                              <div
-                                key={comentario.id}
-                                className="mt-3 rounded-xl bg-white p-3"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="text-xs text-gray-500">
-                                    <span className="font-semibold">
-                                      Autor: {metaComentario(comentario).autor}
-                                    </span>
-                                    <span className="ml-2">
-                                      · Para:{" "}
-                                      {metaComentario(comentario).pessoa}
-                                    </span>
-                                  </div>
-                                  {comentario.nota !== undefined && (
-                                    <span className="flex items-center gap-1 text-xs font-bold text-[var(--laranja)]">
-                                      <FaStar /> {comentario.nota}/5
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="mt-2 text-sm leading-relaxed text-[var(--azul)]">
-                                  “
-                                  {comentario.texto ||
-                                    comentario.comentario ||
-                                    "Sem texto"}
-                                  ”
-                                </p>
-                                {metaComentario(comentario).data && (
-                                  <p className="mt-2 text-xs text-gray-500">
-                                    {metaComentario(comentario).data}
-                                  </p>
-                                )}
-                              </div>
-                            ))}
+                    {Object.entries(feedbacksPorPedido).map(([pedidoId, itens]) =>
+                      itens.map((feedback) => (
+                        <div key={feedback.id} className="mt-4 rounded-xl bg-[var(--creme)] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-bold text-[var(--azul)]">{feedback.tituloPedido}</p>
+                            <Link
+                              to={`/pedido/${pedidoId}?origem=historico`}
+                              className="text-xs font-bold text-[var(--azul)] hover:underline"
+                            >
+                              Ver pedido →
+                            </Link>
                           </div>
-                        ) : null,
+                          {[
+                            [feedback.nomeAjudado, feedback.nomeAjudante, feedback.estrelasAjudante, feedback.feedbackAjudante],
+                            [feedback.nomeAjudante, feedback.nomeAjudado, feedback.estrelasAjudado, feedback.feedbackAjudado],
+                          ].map(([autor, sobre, estrelas, texto]) =>
+                            estrelas != null ? (
+                              <div key={`${feedback.id}-${autor}`} className="mt-3 rounded-xl bg-white p-3">
+                                <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                                  <span>
+                                    <span className="font-semibold">{autor}</span> avaliou {sobre}
+                                  </span>
+                                  <span className="flex items-center gap-1 font-bold text-[var(--laranja)]">
+                                    <FaStar /> {estrelas}/5
+                                  </span>
+                                </div>
+                                {texto && <p className="mt-2 text-sm leading-relaxed text-[var(--azul)]">“{texto}”</p>}
+                              </div>
+                            ) : null,
+                          )}
+                        </div>
+                      )),
                     )}
                   </div>
                 ) : (
                   <div className="mt-4 rounded-xl bg-[var(--creme)] p-6 text-center">
                     <FaCommentDots className="mx-auto text-2xl text-[var(--verde)]" />
+                    <p className="mt-3 font-bold text-[var(--azul)]">Nenhuma avaliação ainda.</p>
+                    <p className="mt-1 text-sm text-gray-500">As avaliações das ajudas concluídas aparecerão aqui.</p>
+                  </div>
+                )}
+              </section>
+              <section
+                id="denuncias"
+                className={`${aba === "denuncias" ? "" : "hidden"} scroll-mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm`}
+              >
+                <h2 className="flex items-center gap-3 text-lg font-bold text-[var(--azul)]">
+                  <FaExclamationTriangle className="text-[var(--coral)]" />
+                  Minhas denúncias
+                </h2>
+                <p className="mt-2 text-sm text-gray-500">
+                  Edite ou retire denúncias enquanto estiverem abertas.
+                </p>
+                {avisoDenuncias && <p className="mt-3 text-sm text-[var(--coral)]">{avisoDenuncias}</p>}
+                {denuncias.length ? (
+                  <div className="mt-4 space-y-3">
+                    {denuncias.map((denuncia) => {
+                      const aberta =
+                        String(denuncia.status || "ABERTA").toUpperCase() ===
+                          "ABERTA" ||
+                        String(denuncia.status || "").toUpperCase() ===
+                          "PENDENTE";
+                      return (
+                        <article
+                          key={denuncia.id}
+                          className="rounded-xl bg-[var(--creme)] p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="font-bold text-[var(--azul)]">
+                                Denúncia #{denuncia.id}
+                              </h3>
+                              <p className="mt-1 text-sm text-gray-600">
+                                {denuncia.motivo || "Sem motivo"}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                {denuncia.mensagem || "Sem descrição"}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">
+                              {denuncia.status || "ABERTA"}
+                            </span>
+                          </div>
+                          {aberta && (
+                            <div className="mt-3 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void editarDenuncia(denuncia)}
+                                className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-[var(--azul)]"
+                              >
+                                <FaEdit className="mr-1 inline" />
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void excluirDenuncia(denuncia.id)
+                                }
+                                className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-[var(--coral)]"
+                              >
+                                <FaTrash className="mr-1 inline" />
+                                Retirar
+                              </button>
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl bg-[var(--creme)] p-6 text-center">
+                    <FaShieldAlt className="mx-auto text-2xl text-[var(--coral)]" />
                     <p className="mt-3 font-bold text-[var(--azul)]">
-                      Nenhum comentário por pedido.
+                      Você não possui denúncias.
                     </p>
                     <p className="mt-1 text-sm text-gray-500">
-                      Os comentários das suas ajudas concluídas aparecerão aqui.
+                      Caso precise relatar um problema, use a página de
+                      denúncias.
                     </p>
                   </div>
                 )}
@@ -748,32 +764,31 @@ export default function Historico() {
             </div>
           </div>
         )}
-        {comentarioDetalhado && (
+        {avaliacaoDetalhada && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"
-            onClick={() => setComentarioDetalhado(null)}
+            onClick={() => setAvaliacaoDetalhada(null)}
           >
             <section
               className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-[var(--azul)]">
-                  Detalhes do comentário
-                </h2>
+                <h2 className="text-xl font-bold text-[var(--azul)]">Detalhes da avaliação</h2>
                 <button
                   type="button"
-                  onClick={() => setComentarioDetalhado(null)}
+                  onClick={() => setAvaliacaoDetalhada(null)}
                   className="font-bold text-[var(--coral)]"
                 >
                   Fechar
                 </button>
               </div>
-              <p className="mt-5 text-sm text-gray-700">
-                {comentarioDetalhado.texto || comentarioDetalhado.comentario}
+              <p className="mt-5 flex items-center gap-1 font-bold text-[var(--laranja)]">
+                <FaStar /> {avaliacaoDetalhada.estrelas}/5 · sobre {avaliacaoDetalhada.sobre}
               </p>
+              <p className="mt-3 text-sm text-gray-700">{avaliacaoDetalhada.texto || "Sem comentário."}</p>
               <p className="mt-3 text-xs text-gray-500">
-                ID do comentário: {comentarioDetalhado.id}
+                Ajuda: {avaliacaoDetalhada.feedback.tituloPedido} · {formatarData(avaliacaoDetalhada.data)}
               </p>
             </section>
           </div>

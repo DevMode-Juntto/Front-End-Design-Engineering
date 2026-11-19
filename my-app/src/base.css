@@ -55,3 +55,83 @@ a {
 img {
   max-width: 100%;
 }
+
+/* ---------- Feedback visual dos botões (services/feedbackBotoes.ts) ---------- */
+button {
+  transition:
+    transform 0.12s ease,
+    filter 0.15s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+button:not(:disabled):active,
+button[data-acao="clicado"] {
+  transform: scale(0.96);
+  filter: brightness(0.9);
+}
+
+button[data-acao="carregando"] {
+  cursor: progress;
+  animation: botao-pulso 0.9s ease-in-out infinite;
+}
+
+button[data-acao="ok"] {
+  background-color: var(--verde) !important;
+  border-color: var(--verde) !important;
+  color: var(--branco) !important;
+  box-shadow: 0 0 0 4px rgb(12 166 156 / 0.3);
+}
+
+button[data-acao="erro"] {
+  background-color: var(--coral) !important;
+  border-color: var(--coral) !important;
+  color: var(--branco) !important;
+  box-shadow: 0 0 0 4px rgb(255 111 90 / 0.3);
+  animation: botao-tremor 0.35s ease;
+}
+
+button[data-acao="ok"]::after,
+button[data-acao="erro"]::after {
+  margin-left: 0.4em;
+  font-weight: 700;
+}
+
+button[data-acao="ok"]::after {
+  content: "✓";
+}
+
+button[data-acao="erro"]::after {
+  content: "✕";
+}
+
+@keyframes botao-pulso {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes botao-tremor {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button[data-acao] {
+    animation: none !important;
+    transform: none !important;
+  }
+}

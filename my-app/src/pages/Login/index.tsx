@@ -15,10 +15,11 @@ type ContaRapida = {
 
 // contas usadas p facilitar a demonstração com os professores
 const contasRapidas: ContaRapida[] = [
-  { nome: "Ana Souza", email: "ana@juntto.local", senha: "123456" },
-  { nome: "Bruno Lima", email: "bruno@juntto.local", senha: "123456" },
-  { nome: "Carla Mendes", email: "carla@juntto.local", senha: "123456" },
-  { nome: "Diego Alves", email: "diego@juntto.local", senha: "123456" },
+  // mesmos usuários criados pelo database/script.sql da API Java
+  { nome: "Ana Souza", email: "ana@email.com", senha: "senha123" },
+  { nome: "Bruno Lima", email: "bruno@email.com", senha: "senha123" },
+  { nome: "Carla Mendes", email: "carla@email.com", senha: "senha123" },
+  { nome: "Felipe Costa", email: "felipe@email.com", senha: "senha123" },
 ];
 
 // controla a tela de login e o acesso do usuário

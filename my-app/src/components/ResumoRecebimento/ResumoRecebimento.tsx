@@ -2,21 +2,17 @@ import { FaUser, FaMoneyBillWave } from "react-icons/fa";
 
 type ResumoRecebimentoProps = {
   nomeSolicitante?: string;
-  idSolicitante?: string | number;
-  bairroSolicitante?: string;
+  idSolicitante?: string | null;
   nomePrestador?: string;
-  idPrestador?: string | number;
-  bairroPrestador?: string;
-  valorRecebido?: number;
+  idPrestador?: string | null;
+  valorRecebido?: number | null;
 };
 
 export default function ResumoRecebimento({
   nomeSolicitante,
   idSolicitante,
-  bairroSolicitante,
   nomePrestador,
   idPrestador,
-  bairroPrestador,
   valorRecebido,
 }: ResumoRecebimentoProps) {
   return (
@@ -37,8 +33,7 @@ export default function ResumoRecebimento({
               {nomeSolicitante || "Nome não informado"}
             </p>
             <p className="text-xs text-gray-500">
-              ID: {idSolicitante ?? "não informado"} ·{" "}
-              {bairroSolicitante || "Bairro não informado"}
+              ID: {idSolicitante ?? "não informado"}
             </p>
           </div>
         </div>
@@ -51,8 +46,7 @@ export default function ResumoRecebimento({
               {nomePrestador || "Prestador não informado"}
             </p>
             <p className="text-xs text-gray-500">
-              ID: {idPrestador ?? "não informado"} ·{" "}
-              {bairroPrestador || "Bairro não informado"}
+              ID: {idPrestador ?? "não informado"}
             </p>
           </div>
         </div>
@@ -62,7 +56,7 @@ export default function ResumoRecebimento({
         <div>
           <p className="text-sm text-gray-500">Valor recebido</p>
           <p className="text-xl font-bold text-[var(--laranja)]">
-            {valorRecebido !== undefined
+            {valorRecebido != null
               ? valorRecebido.toLocaleString("pt-BR", {
                   style: "currency",
                   currency: "BRL",

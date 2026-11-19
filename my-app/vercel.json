@@ -1,9 +1,7 @@
 {
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://juntto-java.onrender.com/:path*"
-    },
+    { "source": "/api/:path*", "destination": "https://juntto-java.onrender.com/:path*" },
+    { "source": "/ia/:path*", "destination": "https://junnto-ia.onrender.com/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

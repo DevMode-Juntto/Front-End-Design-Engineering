@@ -3,7 +3,9 @@ import type { PointerEvent } from "react";
 import { FaComments, FaTimes, FaUserCircle } from "react-icons/fa";
 import { PiChatCircleDots } from "react-icons/pi";
 import { api, obterSessao } from "../../services/api";
-import type { Notificacao } from "../../types/types";
+import type { Notificacao, Pedido } from "../../types/types";
+
+type NotificacaoComPedido = Notificacao & { pedido?: Pedido };
 
 const TAMANHO_BOTAO = 55;
 const MARGEM = 20;
@@ -15,32 +17,20 @@ type Mensagem = {
   texto: string;
 };
 
+// a conversa abre quando o candidato é escolhido (ou chega um lembrete da outra pessoa)
 function ehSolicitacaoChat(notificacao: Notificacao) {
-  const texto =
-    `${notificacao.tipo || ""} ${notificacao.mensagem || ""}`.toLowerCase();
-  return (
-    texto.includes("+1") ||
-    texto.includes("nova conversa") ||
-    texto.includes("chat") ||
-    texto.includes("solicitação foi aceita") ||
-    texto.includes("solicitacao foi aceita")
-  );
+  return notificacao.tipo === "CANDIDATURA_ACEITA" || notificacao.tipo === "LEMBRETE";
 }
 
-function textoDaNovaConversa(notificacao: Notificacao) {
-  const nome =
-    notificacao.usuario?.nome ||
-    notificacao.pedido?.solicitante?.nome ||
-    "O solicitante";
-  const pedidoId = notificacao.pedidoId || notificacao.pedido?.id;
-  const nomePedido =
-    notificacao.pedido?.titulo || `Pedido #${pedidoId || "não identificado"}`;
-  return `${nome} aceitou sua candidatura para a ajuda “${nomePedido}”. Uma nova conversa foi aberta para combinarem os detalhes.`;
+function textoDaNovaConversa(notificacao: NotificacaoComPedido) {
+  if (notificacao.tipo === "LEMBRETE") return notificacao.mensagem;
+  const nome = notificacao.pedido?.nomeSolicitante || "Quem publicou";
+  const nomePedido = notificacao.pedido?.titulo || `Pedido #${notificacao.idPedido}`;
+  return `${nome} escolheu você para a ajuda “${nomePedido}”. Uma nova conversa foi aberta para combinarem os detalhes.`;
 }
 
 export default function Chat() {
   const [aberto, setAberto] = useState(false);
-  const [estaArrastando, setEstaArrastando] = useState(false);
   const [lado, setLado] = useState<"esquerda" | "direita">("direita");
   const [solicitacoesPendentes, setSolicitacoesPendentes] = useState(0);
   const [mensagens, setMensagens] = useState<Mensagem[]>([
@@ -119,7 +109,6 @@ export default function Chat() {
   // inicia o movimento do botão
   function iniciarMovimento(evento: PointerEvent<HTMLButtonElement>) {
     arrastando.current = true;
-    setEstaArrastando(true);
     moveu.current = false;
 
     inicio.current = {
@@ -158,7 +147,6 @@ export default function Chat() {
     if (!arrastando.current) return;
 
     arrastando.current = false;
-    setEstaArrastando(false);
 
     evento.currentTarget.releasePointerCapture(evento.pointerId);
 
@@ -185,11 +173,9 @@ export default function Chat() {
             );
             if (novasConversas.length) {
               const conversasComPedido = await Promise.all(
-                novasConversas.map(async (notificacao) => {
-                  const pedidoId =
-                    notificacao.pedidoId || notificacao.pedido?.id;
-                  if (!pedidoId || notificacao.pedido?.titulo)
-                    return notificacao;
+                novasConversas.map(async (notificacao): Promise<NotificacaoComPedido> => {
+                  const pedidoId = notificacao.idPedido;
+                  if (!pedidoId) return notificacao;
                   try {
                     return {
                       ...notificacao,
@@ -246,7 +232,7 @@ export default function Chat() {
       style={{
         left: `${posicao.x}px`,
         top: `${topoPainel}px`,
-        transition: estaArrastando
+        transition: arrastando.current
           ? "none"
           : "left 320ms ease-out, top 320ms ease-out",
       }}

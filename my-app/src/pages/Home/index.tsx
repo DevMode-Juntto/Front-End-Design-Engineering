@@ -169,7 +169,7 @@ export default function Home() {
             <Card
               icone={<FaUser />}
               titulo="Perfil"
-              descricao="Exibe nome, ID, bairro, categorias e comentários recebidos. O dono do perfil pode editar seus dados permitidos."
+              descricao="Exibe nome, foto, categorias e avaliações recebidas"
             >
               <a href="/perfil">
                 <Botao texto="Abrir protótipo" tipo="secundario" />

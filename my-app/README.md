@@ -275,31 +275,50 @@ As imagens são:
 
 ## 🔴 Como Usar
 
-**1. Clone o repositório**
+1. Clone o repositório:
 
 ```bash
-git clone https://github.com/DevMode-Juntto/Front-End-Design-Engineering
-```
-
-**2. Acesse a pasta da aplicação**
-
-```bash
+git clone https://github.com/DevMode-Juntto/Front-End-Design-Engineering.git
 cd Front-End-Design-Engineering/my-app
 ```
 
-**3. Instale as dependências**
+2. Instale as dependências:
 
 ```bash
 npm install
 ```
 
-**4. Execute o projeto**
+3. O arquivo `.env` (modelo em `.env.example`) só vale no `npm run dev` e já aponta para as APIs no Render:
+
+```bash
+VITE_API_URL=https://juntto-java.onrender.com   # API Java (ou http://localhost:8080)
+VITE_API_IA_URL=https://junnto-ia.onrender.com  # API de IA (ou http://localhost:5000)
+VITE_API_PYTHON_URL=                            # API Python: vazio = http://localhost:5001
+```
+
+4. Suba a API Java (veja o README do back-end) e rode o front:
 
 ```bash
 npm run dev
 ```
 
----
+Usuários de teste da API Java (criados pelo `script.sql`, senha `senha123`): `ana@email.com`, `bruno@email.com`, `carla@email.com`, `diego@email.com`, `elisa@email.com`, `felipe@email.com`.
+
+### 🔴 Integração com as APIs
+
+| Serviço | Arquivo | O que faz |
+|---|---|---|
+| API de IA (Flask, porta 5000) | `src/services/apiIA.ts` | Valor sugerido na tela Publicar e recomendações na Home |
+| API Java | `src/services/api.ts` | Usuários, categorias, pedidos (AJUDA/OFERTA), candidaturas, avaliações e notificações |
+| API Python | `src/services/apiPython.ts` | Painel de administração (`/admin`) e denúncias (`/denuncia`) |
+| Tipos | `src/types/types.ts` | Interfaces TypeScript com os mesmos campos das respostas da API Java |
+
+### 🔴 Deploy na Vercel
+
+- **Root Directory:** `my-app` (o `vercel.json` fica dentro dela).
+- Em produção o front chama `/api/...` e `/ia/...` no próprio domínio, e o `vercel.json` repassa para `https://juntto-java.onrender.com` e `https://junnto-ia.onrender.com`. Por isso não há erro de CORS e **nenhuma variável de ambiente é necessária na Vercel**.
+- A API Python (admin e denúncias) ainda não está publicada: nessas telas o app mostra um aviso e as demais funções seguem normais. Quando ela estiver no ar, basta criar `VITE_API_PYTHON_URL` na Vercel e fazer Redeploy.
+- Produção: https://junttodevmode1.vercel.app
 
 ### 🔴 Links do Projeto
 

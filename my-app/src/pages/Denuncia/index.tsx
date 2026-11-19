@@ -4,22 +4,50 @@ import { FaArrowLeft, FaCheckCircle, FaPaperPlane } from "react-icons/fa";
 
 import CampoDenuncia from "../../components/CampoDenuncia/CampoDenuncia";
 import AvisoDenuncia from "../../components/AvisoDenuncia/AvisoDenuncia";
+import { obterSessao } from "../../services/api";
+import { API_PYTHON_DISPONIVEL, AVISO_API_PYTHON, apiPython } from "../../services/apiPython";
 
-// controla o formulário local de denúncia
+// controla o formulário de denúncia
 export default function Denuncia() {
   const [idUsuario, setIdUsuario] = useState("");
   const [motivo, setMotivo] = useState("");
   const [mensagem, setMensagem] = useState("");
   const [enviada, setEnviada] = useState(false);
+  const [erro, setErro] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     document.title = "Denúncia - Junttô";
   }, []);
 
-  // só mostra a confirmação, pq a API ainda não tem denúncia
-  function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
+  // envia a denúncia preenchida
+  async function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setEnviada(true);
+    setErro("");
+    const sessao = obterSessao();
+    if (!sessao?.id) {
+      setErro("Entre na sua conta para enviar uma denúncia.");
+      return;
+    }
+    if (idUsuario.trim() === String(sessao.id)) {
+      setErro("Você não pode denunciar a própria conta.");
+      return;
+    }
+    setEnviando(true);
+    try {
+      // denunciante = usuário logado; denunciado = ID informado no formulário
+      await apiPython.criarDenuncia({
+        usuarioId: sessao.id,
+        idUsuarioDenunciado: idUsuario.trim(),
+        motivo,
+        mensagem: mensagem.trim(),
+      });
+      setEnviada(true);
+    } catch (erroApi) {
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível enviar a denúncia. Tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   if (enviada) {
@@ -29,13 +57,16 @@ export default function Denuncia() {
           <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[var(--verde)]/10">
             <FaCheckCircle className="text-5xl text-[var(--verde)]" />
           </div>
+
           <h1 className="mt-6 text-2xl font-bold text-[var(--azul)] sm:text-3xl">
-            Formulário preenchido
+            Denúncia enviada!
           </h1>
+
           <p className="mt-4 leading-relaxed text-gray-600">
-            Seu relato foi registrado apenas nesta demonstração. O envio para a
-            equipe ficará disponível quando a API tiver suporte a denúncias.
+            Recebemos sua denúncia. Obrigado por ajudar a manter nossa
+            comunidade segura!
           </p>
+
           <Link
             to="/home"
             className="mt-8 flex min-h-14 w-full items-center justify-center rounded-xl bg-[var(--verde)] px-6 py-4 font-bold text-white transition hover:brightness-95"
@@ -58,17 +89,26 @@ export default function Denuncia() {
           >
             <FaArrowLeft />
           </Link>
+
           <div>
             <h1 className="text-2xl font-bold text-[var(--azul)] sm:text-3xl">
               Fazer uma denúncia
             </h1>
+
             <p className="mt-1 text-sm text-gray-500">
-              Formulário de demonstração do projeto
+              Ajude a manter o Junttô um espaço seguro para todos
             </p>
           </div>
         </header>
 
         <AvisoDenuncia />
+
+        {!API_PYTHON_DISPONIVEL && (
+          <p role="status" className="mb-6 rounded-xl bg-[var(--creme)] p-4 text-sm text-[var(--azul)]">
+            {AVISO_API_PYTHON} O formulário fica disponível assim que ela for publicada.
+          </p>
+        )}
+
         <form onSubmit={enviarDenuncia} className="flex flex-col gap-6">
           <CampoDenuncia titulo="ID do usuário denunciado">
             <input
@@ -80,6 +120,7 @@ export default function Denuncia() {
               className="h-14 w-full rounded-xl border border-gray-300 bg-white px-4 text-base text-[var(--azul)] outline-none transition placeholder:text-gray-400 focus:border-[var(--verde)] focus:ring-2 focus:ring-[var(--verde)]/20"
             />
           </CampoDenuncia>
+
           <CampoDenuncia titulo="Motivo da denúncia">
             <select
               value={motivo}
@@ -100,6 +141,7 @@ export default function Denuncia() {
               <option value="Outro">Outro</option>
             </select>
           </CampoDenuncia>
+
           <CampoDenuncia titulo="Mensagem">
             <textarea
               value={mensagem}
@@ -110,19 +152,28 @@ export default function Denuncia() {
               className="w-full resize-y rounded-xl border border-gray-300 bg-white p-4 text-base leading-relaxed text-[var(--azul)] outline-none transition placeholder:text-gray-400 focus:border-[var(--verde)] focus:ring-2 focus:ring-[var(--verde)]/20"
             />
           </CampoDenuncia>
+
+          {erro && (
+            <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {erro}
+            </p>
+          )}
+
           <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
             <Link
               to="/home"
               className="flex min-h-14 flex-1 items-center justify-center rounded-xl border-2 border-[var(--azul)] px-5 py-3 text-center font-bold text-[var(--azul)] transition hover:bg-[var(--cinza)]"
             >
-              Cancelar
+              Cancelar denúncia
             </Link>
+
             <button
               type="submit"
-              className="flex min-h-14 flex-1 items-center justify-center gap-3 rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white shadow-md transition hover:brightness-95"
+              disabled={enviando || !API_PYTHON_DISPONIVEL}
+              className="flex min-h-14 flex-1 disabled:cursor-not-allowed disabled:opacity-60 items-center justify-center gap-3 rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white shadow-md transition hover:brightness-95"
             >
               <FaPaperPlane />
-              Registrar formulário
+              {enviando ? "Enviando..." : "Enviar denúncia"}
             </button>
           </div>
         </form>

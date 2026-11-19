@@ -7,10 +7,10 @@ import CampoAutenticacao from "../../components/CampoAutenticacao/CampoAutentica
 import BotaoAutenticacao from "../../components/BotaoAutenticacao/BotaoAutenticacao";
 import { api } from "../../services/api";
 
-// controla a tela de cadastro
 export default function Cadastro() {
   const navigate = useNavigate();
   const [nome, setNome] = useState("");
+  const [sobrenome, setSobrenome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [maiorDeIdade, setMaiorDeIdade] = useState(false);
@@ -21,7 +21,7 @@ export default function Cadastro() {
     document.title = "Cadastro - Junttô";
   }, []);
 
-  // cria a conta com os dados preenchidos
+  // cria conta com os dados preenchidos
   async function criarConta(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErro("");
@@ -31,7 +31,7 @@ export default function Cadastro() {
     }
     setCarregando(true);
     try {
-      await api.cadastrar({ nome, email, senha });
+      await api.cadastrar({ nome: nome.trim(), sobrenome: sobrenome.trim(), email: email.trim(), senha });
       navigate("/login");
     } catch (erroApi) {
       setErro(
@@ -53,10 +53,18 @@ export default function Cadastro() {
         <CampoAutenticacao
           tipo="text"
           nome="nome"
-          placeholder="Seu nome completo"
+          placeholder="Seu nome"
           icone={<FaUser />}
           value={nome}
           onChange={(event) => setNome(event.target.value)}
+        />
+        <CampoAutenticacao
+          tipo="text"
+          nome="sobrenome"
+          placeholder="Seu sobrenome"
+          icone={<FaUser />}
+          value={sobrenome}
+          onChange={(event) => setSobrenome(event.target.value)}
         />
         <CampoAutenticacao
           tipo="email"
