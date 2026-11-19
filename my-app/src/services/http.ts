@@ -78,9 +78,8 @@ export const URL_API_IA = import.meta.env.PROD
   ? "/ia"
   : import.meta.env.VITE_API_IA_URL || "http://localhost:5000";
 
-// A API Python (administração e denúncias) só é usada quando o endereço dela estiver configurado.
-// Em produção, enquanto VITE_API_PYTHON_URL não estiver definida na Vercel, essas funções ficam desativadas.
-export const URL_API_PYTHON =
-  import.meta.env.VITE_API_PYTHON_URL || (import.meta.env.PROD ? "" : "http://localhost:5001");
+// A API Python (administração e denúncias) só é usada quando VITE_API_PYTHON_URL estiver configurada
+// (no .env local ou nas variáveis da Vercel). Sem ela, essas funções ficam desativadas, local e em produção.
+export const URL_API_PYTHON = import.meta.env.VITE_API_PYTHON_URL || "";
 
 export const API_PYTHON_DISPONIVEL = URL_API_PYTHON !== "";

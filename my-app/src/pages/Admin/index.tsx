@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   FaArrowLeft,
   FaBell,
   FaBoxOpen,
+  FaCheckCircle,
   FaExclamationTriangle,
   FaPlus,
   FaTags,
   FaTrash,
+  FaTimes,
   FaUsers,
 } from "react-icons/fa";
 import {
@@ -30,6 +32,30 @@ type UsuarioAdmin = Usuario & { status?: string };
 
 type Aba = "usuarios" | "categorias" | "pedidos" | "denuncias" | "avisos";
 
+// A API Java não tem desativação de usuários: ativar/desativar aqui é uma demonstração.
+// O status fica salvo só neste navegador (localStorage) e nada é enviado para as APIs.
+const CHAVE_INATIVOS_DEMO = "junttô_admin_inativos_demo";
+
+function lerInativosDemo(): string[] {
+  try {
+    const salvo = localStorage.getItem(CHAVE_INATIVOS_DEMO);
+    return salvo ? (JSON.parse(salvo) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function salvarInativosDemo(ids: string[]) {
+  try {
+    localStorage.setItem(CHAVE_INATIVOS_DEMO, JSON.stringify(ids));
+  } catch {
+    // sem localStorage: a demonstração vale só até recarregar a página
+  }
+}
+
+type Confirmacao = { usuario: UsuarioAdmin; acao: "desativar" | "reativar" };
+type Aviso = { texto: string; usuario: UsuarioAdmin; desativado: boolean };
+
 const todasAbas: {
   id: Aba;
   titulo: string;
@@ -39,9 +65,7 @@ const todasAbas: {
   {
     id: "usuarios",
     titulo: "Usuários",
-    descricao: API_PYTHON_DISPONIVEL
-      ? "Gerencie contas e status de acesso."
-      : "Consulte as contas cadastradas.",
+    descricao: "Gerencie contas e status de acesso.",
   },
   {
     id: "categorias",
@@ -93,6 +117,53 @@ export default function Admin() {
   const usuarioAdministrador = sessao?.id || "1";
   const [destinatarioAviso, setDestinatarioAviso] = useState("");
   const [mensagemAviso, setMensagemAviso] = useState("");
+  const [inativosDemo, setInativosDemo] = useState<string[]>(lerInativosDemo);
+  const [confirmacao, setConfirmacao] = useState<Confirmacao | null>(null);
+  const [aviso, setAviso] = useState<Aviso | null>(null);
+  const timerAviso = useRef<number | undefined>(undefined);
+
+  function usuarioAtivo(usuario: UsuarioAdmin) {
+    return !inativosDemo.includes(usuario.id);
+  }
+
+  function mostrarAviso(novo: Aviso) {
+    window.clearTimeout(timerAviso.current);
+    setAviso(novo);
+    timerAviso.current = window.setTimeout(() => setAviso(null), 6000);
+  }
+
+  useEffect(() => () => window.clearTimeout(timerAviso.current), []);
+
+  // fecha a confirmação com Esc
+  useEffect(() => {
+    if (!confirmacao) return;
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") setConfirmacao(null);
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [confirmacao]);
+
+  // abre a pergunta "deseja realmente...?" antes de mudar o status
+  function pedirConfirmacao(usuario: UsuarioAdmin) {
+    setConfirmacao({ usuario, acao: usuarioAtivo(usuario) ? "desativar" : "reativar" });
+  }
+
+  // desativa ou reativa o usuário na demonstração (só neste navegador)
+  function alterarStatusUsuario(usuario: UsuarioAdmin, desativar: boolean) {
+    setConfirmacao(null);
+    const ids = desativar
+      ? [...new Set([...inativosDemo, usuario.id])]
+      : inativosDemo.filter((id) => id !== usuario.id);
+    setInativosDemo(ids);
+    salvarInativosDemo(ids);
+    const nome = nomeCompleto(usuario);
+    mostrarAviso({
+      texto: desativar ? `${nome} foi desativado(a).` : `${nome} foi reativado(a).`,
+      usuario,
+      desativado: desativar,
+    });
+  }
 
   // busca os dados usados no painel
   async function carregar() {
@@ -312,7 +383,8 @@ export default function Admin() {
         {!API_PYTHON_DISPONIVEL && (
           <p className="mb-5 rounded-xl bg-[var(--creme)] p-4 text-sm text-[var(--azul)]">
             {AVISO_API_PYTHON} Por enquanto, o painel mostra os dados da API
-            Java.
+            Java, e ativar ou desativar usuários é uma demonstração que fica
+            salva só neste navegador.
           </p>
         )}
 
@@ -355,13 +427,11 @@ export default function Admin() {
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {usuarios.map((usuario) => {
-                    const ativo =
-                      String(usuario.status || "ATIVO").toUpperCase() ===
-                      "ATIVO";
+                    const ativo = usuarioAtivo(usuario);
                     return (
                       <article
                         key={usuario.id}
-                        className="rounded-2xl border border-gray-200 p-4"
+                        className={`rounded-2xl border p-4 transition ${ativo ? "border-gray-200" : "border-red-200 bg-red-50/60"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -383,11 +453,10 @@ export default function Admin() {
                         </div>
                         <button
                           type="button"
-                          disabled
-                          title="A API fornecida não possui uma função de desativação de usuários."
-                          className="mt-4 cursor-not-allowed rounded-lg border border-gray-300 px-3 py-2 text-sm font-bold text-gray-400"
+                          onClick={() => pedirConfirmacao(usuario)}
+                          className={`mt-4 rounded-lg border px-3 py-2 text-sm font-bold ${ativo ? "border-[var(--coral)] text-[var(--coral)]" : "border-[var(--verde)] text-[var(--verde)]"}`}
                         >
-                          {ativo ? "Desativar usuário" : "Ativar usuário"}
+                          {ativo ? "Desativar usuário" : "Reativar usuário"}
                         </button>
                       </article>
                     );
@@ -724,6 +793,76 @@ export default function Admin() {
           </section>
         )}
       </div>
+      {confirmacao && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setConfirmacao(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-confirmacao"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(evento) => evento.stopPropagation()}
+          >
+            <h2 id="titulo-confirmacao" className="text-xl font-bold text-[var(--azul)]">
+              {confirmacao.acao === "desativar" ? "Desativar usuário?" : "Reativar usuário?"}
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              {confirmacao.acao === "desativar"
+                ? `Deseja realmente desativar ${nomeCompleto(confirmacao.usuario)}? A conta fica sem acesso até ser reativada.`
+                : `Deseja reativar ${nomeCompleto(confirmacao.usuario)}? A conta volta a ter acesso normalmente.`}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmacao(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700"
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                onClick={() => alterarStatusUsuario(confirmacao.usuario, confirmacao.acao === "desativar")}
+                className={`rounded-lg px-4 py-2 text-sm font-bold text-white ${confirmacao.acao === "desativar" ? "bg-[var(--coral)]" : "bg-[var(--verde)]"}`}
+              >
+                {confirmacao.acao === "desativar" ? "Sim, desativar" : "Sim, reativar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aviso && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-5 z-50 flex max-w-sm items-start gap-3 rounded-2xl bg-[var(--azul)] p-4 text-white shadow-xl"
+        >
+          <FaCheckCircle className="mt-0.5 shrink-0 text-xl text-[var(--verde)]" />
+          <div className="text-sm">
+            <p className="font-bold">{aviso.desativado ? "Usuário desativado" : "Usuário reativado"}</p>
+            <p className="mt-0.5 text-white/85">{aviso.texto}</p>
+            {aviso.desativado && (
+              <button
+                type="button"
+                onClick={() => alterarStatusUsuario(aviso.usuario, false)}
+                className="mt-2 rounded-lg bg-white px-3 py-1 text-xs font-bold text-[var(--azul)]"
+              >
+                Reativar
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="Fechar notificação"
+            onClick={() => setAviso(null)}
+            className="text-white/70 hover:text-white"
+          >
+            <FaTimes />
+          </button>
+        </div>
+      )}
     </main>
   );
 }
