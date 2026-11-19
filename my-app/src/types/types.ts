@@ -48,6 +48,11 @@ export type Pedido = {
   bairro?: string;
   data?: string;
   valor?: number;
+  tipoPublicacao?: "AJUDA" | "OFERTA" | string;
+  idCandidaturaAceita?: Identificador;
+  totalAceitas?: number;
+  statusPagamento?: string;
+  naoIncluirPagamento?: boolean;
   status?: PedidoStatus | string;
   solicitante?: Usuario;
   prestador?: Usuario;
@@ -95,6 +100,7 @@ export type LoginResposta = Usuario & { token?: string };
 
 export type DadosCadastro = {
   nome: string;
+  sobrenome?: string;
   email: string;
   senha: string;
 };
@@ -133,12 +139,28 @@ export type DadosAceite = {
 };
 
 export type DadosPagamento = {
+  usuarioId?: Identificador;
+  idCandidatura?: Identificador;
   formaPagamento: string;
   caixinha: number;
   valor?: number;
 };
 
-export type DadosComentario = Record<string, unknown>;
+export type DadosComentario = {
+  usuarioId?: Identificador;
+  idCandidatura?: Identificador;
+  estrelas?: number;
+  nota?: number;
+  texto?: string;
+  comentario?: string;
+  [chave: string]: unknown;
+};
+
+export type DadosNotificacao = {
+  usuarioId: Identificador;
+  idCandidatura: Identificador;
+  mensagem: string;
+};
 
 export type DadosDenuncia = Record<string, unknown>;
 

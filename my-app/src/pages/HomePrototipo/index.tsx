@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   FaArrowRight,
@@ -143,6 +143,8 @@ async function notificacoesDeCandidatosAtuais(
   await Promise.all(
     pedidosComCandidatos.map(async (pedidoId) => {
       try {
+        const pedido = await api.buscarPedido(pedidoId);
+        if (pedido.tipoPublicacao === "OFERTA") return;
         const solicitacaoAceita = (
           await api.listarSolicitacoesPedido(pedidoId, usuarioId)
         ).find((item) =>
@@ -184,7 +186,7 @@ export default function HomePrototipo() {
   const [mensagem, setMensagem] = useState("");
 
   // busca pedidos, notificações e dados da home
-  async function carregar() {
+  const carregar = useCallback(async () => {
     let oportunidades: Pedido[] = [];
     try {
       oportunidades = await api.listarPedidos();
@@ -285,11 +287,12 @@ export default function HomePrototipo() {
     } catch {
       setNotificacoes(notificacoesAtuais);
     }
-  }
+  }, [sessao?.id]);
 
   useEffect(() => {
-    void carregar();
-  }, [sessao?.id]);
+    const timer = window.setTimeout(() => void carregar(), 0);
+    return () => window.clearTimeout(timer);
+  }, [carregar]);
 
   useEffect(() => {
     const atualizarNotificacoes = () => void carregar();
@@ -302,7 +305,7 @@ export default function HomePrototipo() {
         "junttô:notificacoes-atualizadas",
         atualizarNotificacoes,
       );
-  }, [sessao?.id]);
+  }, [carregar]);
 
   const oportunidades = useMemo(
     () =>
@@ -426,12 +429,13 @@ export default function HomePrototipo() {
         pedidoId,
         sessao.id,
       );
+      const pedido = await api.buscarPedido(pedidoId);
       const outraSolicitacaoAceita = solicitacoes.find(
         (item) =>
-          ["ACEITA", "ESCOLHIDO"].includes(String(item.status).toUpperCase()) &&
+          String(item.status).toUpperCase() === "ACEITA" &&
           String(item.id) !== String(notificacao.solicitacaoId),
       );
-      if (outraSolicitacaoAceita) {
+      if (pedido.tipoPublicacao !== "OFERTA" && outraSolicitacaoAceita) {
         setMensagem("Você já escolheu um prestador para esta ajuda.");
         return;
       }
@@ -451,7 +455,7 @@ export default function HomePrototipo() {
       await api.buscarSolicitacaoPedido(pedidoId, solicitacaoId, sessao.id);
       await api.atualizarSolicitacaoPedido(pedidoId, solicitacaoId, {
         usuarioId: sessao.id,
-        status: "ESCOLHIDO",
+        status: "ACEITA",
         observacao: "Prestador escolhido pelo solicitante.",
       });
       await marcarComoLida(notificacao);
@@ -459,14 +463,16 @@ export default function HomePrototipo() {
         ...anteriores,
         [String(pedidoId)]: candidato.id as string | number,
       }));
-      setNotificacoes((anteriores) =>
-        anteriores.filter(
-          (item) =>
-            !ehCandidato(item) ||
-            String(item.pedidoId || item.pedido?.id) !== String(pedidoId) ||
-            item.id === notificacao.id,
-        ),
-      );
+      if (pedido.tipoPublicacao !== "OFERTA") {
+        setNotificacoes((anteriores) =>
+          anteriores.filter(
+            (item) =>
+              !ehCandidato(item) ||
+              String(item.pedidoId || item.pedido?.id) !== String(pedidoId) ||
+              item.id === notificacao.id,
+          ),
+        );
+      }
       setMensagem(
         `${candidato.nome} foi escolhido para a ajuda “${nomePedido}”. Os demais candidatos foram removidos desta lista.`,
       );

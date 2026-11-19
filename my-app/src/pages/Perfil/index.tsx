@@ -37,7 +37,6 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
 
   useEffect(() => {
     if (!id) return;
-    setCarregando(true);
     Promise.all([
       api.buscarUsuario(id, ehDono),
       api.listarTags(id),

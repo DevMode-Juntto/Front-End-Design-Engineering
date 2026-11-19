@@ -4,9 +4,8 @@ import { FaArrowLeft, FaCheckCircle, FaPaperPlane } from "react-icons/fa";
 
 import CampoDenuncia from "../../components/CampoDenuncia/CampoDenuncia";
 import AvisoDenuncia from "../../components/AvisoDenuncia/AvisoDenuncia";
-import { api } from "../../services/api";
 
-// controla o formulário de denúncia
+// controla o formulário local de denúncia
 export default function Denuncia() {
   const [idUsuario, setIdUsuario] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -17,15 +16,10 @@ export default function Denuncia() {
     document.title = "Denúncia - Junttô";
   }, []);
 
-  // envia a denúncia preenchida
-  async function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
+  // só mostra a confirmação, pq a API ainda não tem denúncia
+  function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    try {
-      await api.criarDenuncia({ usuarioId: idUsuario, motivo, mensagem });
-      setEnviada(true);
-    } catch {
-      setMensagem("Não foi possível enviar a denúncia. Tente novamente.");
-    }
+    setEnviada(true);
   }
 
   if (enviada) {
@@ -35,16 +29,13 @@ export default function Denuncia() {
           <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[var(--verde)]/10">
             <FaCheckCircle className="text-5xl text-[var(--verde)]" />
           </div>
-
           <h1 className="mt-6 text-2xl font-bold text-[var(--azul)] sm:text-3xl">
-            Denúncia enviada!
+            Formulário preenchido
           </h1>
-
           <p className="mt-4 leading-relaxed text-gray-600">
-            Recebemos sua denúncia. Obrigado por ajudar a manter nossa
-            comunidade segura!
+            Seu relato foi registrado apenas nesta demonstração. O envio para a
+            equipe ficará disponível quando a API tiver suporte a denúncias.
           </p>
-
           <Link
             to="/home"
             className="mt-8 flex min-h-14 w-full items-center justify-center rounded-xl bg-[var(--verde)] px-6 py-4 font-bold text-white transition hover:brightness-95"
@@ -67,20 +58,17 @@ export default function Denuncia() {
           >
             <FaArrowLeft />
           </Link>
-
           <div>
             <h1 className="text-2xl font-bold text-[var(--azul)] sm:text-3xl">
               Fazer uma denúncia
             </h1>
-
             <p className="mt-1 text-sm text-gray-500">
-              Ajude a manter o Junttô um espaço seguro para todos
+              Formulário de demonstração do projeto
             </p>
           </div>
         </header>
 
         <AvisoDenuncia />
-
         <form onSubmit={enviarDenuncia} className="flex flex-col gap-6">
           <CampoDenuncia titulo="ID do usuário denunciado">
             <input
@@ -92,7 +80,6 @@ export default function Denuncia() {
               className="h-14 w-full rounded-xl border border-gray-300 bg-white px-4 text-base text-[var(--azul)] outline-none transition placeholder:text-gray-400 focus:border-[var(--verde)] focus:ring-2 focus:ring-[var(--verde)]/20"
             />
           </CampoDenuncia>
-
           <CampoDenuncia titulo="Motivo da denúncia">
             <select
               value={motivo}
@@ -113,7 +100,6 @@ export default function Denuncia() {
               <option value="Outro">Outro</option>
             </select>
           </CampoDenuncia>
-
           <CampoDenuncia titulo="Mensagem">
             <textarea
               value={mensagem}
@@ -124,21 +110,19 @@ export default function Denuncia() {
               className="w-full resize-y rounded-xl border border-gray-300 bg-white p-4 text-base leading-relaxed text-[var(--azul)] outline-none transition placeholder:text-gray-400 focus:border-[var(--verde)] focus:ring-2 focus:ring-[var(--verde)]/20"
             />
           </CampoDenuncia>
-
           <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
             <Link
               to="/home"
               className="flex min-h-14 flex-1 items-center justify-center rounded-xl border-2 border-[var(--azul)] px-5 py-3 text-center font-bold text-[var(--azul)] transition hover:bg-[var(--cinza)]"
             >
-              Cancelar denúncia
+              Cancelar
             </Link>
-
             <button
               type="submit"
               className="flex min-h-14 flex-1 items-center justify-center gap-3 rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white shadow-md transition hover:brightness-95"
             >
               <FaPaperPlane />
-              Enviar denúncia
+              Registrar formulário
             </button>
           </div>
         </form>

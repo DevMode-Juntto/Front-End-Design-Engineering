@@ -138,10 +138,7 @@ export default function DetalhesPedido() {
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    if (!id) {
-      setErro("Pedido não informado.");
-      return;
-    }
+    if (!id) return;
     void api
       .buscarPedido(id)
       .then((dados) => setPedido(dados as PedidoCompleto))
@@ -154,11 +151,13 @@ export default function DetalhesPedido() {
       );
   }, [id]);
 
-  if (erro) {
+  const erroExibido = erro || (!id ? "Pedido não informado." : "");
+
+  if (erroExibido) {
     return (
       <main className="min-h-screen bg-[var(--creme)] px-4 py-10">
         <div className="mx-auto max-w-3xl rounded-3xl bg-white p-8 text-center shadow-sm">
-          <p className="text-[var(--coral)]">{erro}</p>
+          <p className="text-[var(--coral)]">{erroExibido}</p>
           <Link
             to={voltarPara}
             className="mt-5 inline-block font-bold text-[var(--azul)]"

@@ -40,6 +40,7 @@ function textoDaNovaConversa(notificacao: Notificacao) {
 
 export default function Chat() {
   const [aberto, setAberto] = useState(false);
+  const [estaArrastando, setEstaArrastando] = useState(false);
   const [lado, setLado] = useState<"esquerda" | "direita">("direita");
   const [solicitacoesPendentes, setSolicitacoesPendentes] = useState(0);
   const [mensagens, setMensagens] = useState<Mensagem[]>([
@@ -118,6 +119,7 @@ export default function Chat() {
   // inicia o movimento do botão
   function iniciarMovimento(evento: PointerEvent<HTMLButtonElement>) {
     arrastando.current = true;
+    setEstaArrastando(true);
     moveu.current = false;
 
     inicio.current = {
@@ -156,6 +158,7 @@ export default function Chat() {
     if (!arrastando.current) return;
 
     arrastando.current = false;
+    setEstaArrastando(false);
 
     evento.currentTarget.releasePointerCapture(evento.pointerId);
 
@@ -243,7 +246,7 @@ export default function Chat() {
       style={{
         left: `${posicao.x}px`,
         top: `${topoPainel}px`,
-        transition: arrastando.current
+        transition: estaArrastando
           ? "none"
           : "left 320ms ease-out, top 320ms ease-out",
       }}

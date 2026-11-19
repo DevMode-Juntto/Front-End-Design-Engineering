@@ -5,23 +5,16 @@ import {
   FaClipboardList,
   FaCommentDots,
   FaEdit,
-  FaExclamationTriangle,
   FaHistory,
   FaListAlt,
   FaHandsHelping,
   FaPaperPlane,
-  FaShieldAlt,
   FaStar,
   FaTrash,
   FaWallet,
 } from "react-icons/fa";
 import { api, obterSessao } from "../../services/api";
-import type {
-  Comentario,
-  Denuncia,
-  Pedido,
-  SolicitacaoAjuda,
-} from "../../types/types";
+import type { Comentario, Pedido, SolicitacaoAjuda } from "../../types/types";
 
 type AbaHistorico =
   | "servicos"
@@ -29,8 +22,7 @@ type AbaHistorico =
   | "candidaturas"
   | "pagamentos"
   | "comentarios"
-  | "comentariosPedido"
-  | "denuncias";
+  | "comentariosPedido";
 
 const abasHistorico = [
   {
@@ -63,7 +55,6 @@ const abasHistorico = [
     titulo: "Comentários por pedido",
     icone: FaCommentDots,
   },
-  { id: "denuncias" as const, titulo: "Minhas denúncias", icone: FaShieldAlt },
 ];
 
 // mostra os pedidos do histórico e as ações disponíveis
@@ -242,7 +233,6 @@ export default function Historico() {
   const [comentariosPorPedido, setComentariosPorPedido] = useState<
     Record<string, Comentario[]>
   >({});
-  const [denuncias, setDenuncias] = useState<Denuncia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [comentarioDetalhado, setComentarioDetalhado] =
     useState<Comentario | null>(null);
@@ -258,13 +248,11 @@ export default function Historico() {
         pedidosRecebidos,
         aceitesRecebidos,
         comentariosRecebidos,
-        denunciasRecebidas,
       ] = await Promise.all([
         api.listarAtividades(idUsuario, "PRESTADOR"),
         api.listarAtividades(idUsuario, "SOLICITANTE"),
         api.listarAceites(idUsuario),
         api.listarComentariosAutor(idUsuario),
-        api.listarDenuncias(idUsuario),
       ]);
       setServicos(
         servicosRecebidos.filter((pedido) => pedido.status === "CONCLUIDO"),
@@ -272,7 +260,6 @@ export default function Historico() {
       setPedidos(pedidosRecebidos);
       setAceites(aceitesRecebidos);
       setComentarios(comentariosRecebidos);
-      setDenuncias(denunciasRecebidas);
       const pedidosFinalizados = [
         ...servicosRecebidos,
         ...pedidosRecebidos,
@@ -306,7 +293,8 @@ export default function Historico() {
   }, [idUsuario]);
 
   useEffect(() => {
-    void carregar();
+    const timer = window.setTimeout(() => void carregar(), 0);
+    return () => window.clearTimeout(timer);
   }, [carregar]);
 
   // exclui um pedido aberto depois da confirmação
@@ -388,46 +376,6 @@ export default function Historico() {
         erroApi instanceof Error
           ? erroApi.message
           : "Não foi possível desistir da candidatura.",
-      );
-    }
-  }
-
-  // altera os dados de uma denúncia que ainda está aberta
-  async function editarDenuncia(denuncia: Denuncia) {
-    const motivo = window.prompt(
-      "Edite o motivo da denúncia:",
-      denuncia.motivo || "",
-    );
-    if (motivo === null || !motivo.trim()) return;
-    const mensagem =
-      window.prompt("Edite a descrição:", denuncia.mensagem || "") || "";
-    try {
-      await api.editarDenuncia(denuncia.id, {
-        motivo: motivo.trim(),
-        mensagem: mensagem.trim(),
-      });
-      await carregar();
-    } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível editar a denúncia.",
-      );
-    }
-  }
-
-  // retira uma denúncia depois da confirmação
-  async function excluirDenuncia(id: string | number) {
-    if (idUsuario === undefined) return;
-    if (!window.confirm("Retirar esta denúncia?")) return;
-    try {
-      await api.excluirDenuncia(id, idUsuario);
-      await carregar();
-    } catch (erroApi) {
-      setErro(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível retirar a denúncia.",
       );
     }
   }
@@ -793,85 +741,6 @@ export default function Historico() {
                     </p>
                     <p className="mt-1 text-sm text-gray-500">
                       Os comentários das suas ajudas concluídas aparecerão aqui.
-                    </p>
-                  </div>
-                )}
-              </section>
-              <section
-                id="denuncias"
-                className={`${aba === "denuncias" ? "" : "hidden"} scroll-mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm`}
-              >
-                <h2 className="flex items-center gap-3 text-lg font-bold text-[var(--azul)]">
-                  <FaExclamationTriangle className="text-[var(--coral)]" />
-                  Minhas denúncias
-                </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Edite ou retire denúncias enquanto estiverem abertas.
-                </p>
-                {denuncias.length ? (
-                  <div className="mt-4 space-y-3">
-                    {denuncias.map((denuncia) => {
-                      const aberta =
-                        String(denuncia.status || "ABERTA").toUpperCase() ===
-                          "ABERTA" ||
-                        String(denuncia.status || "").toUpperCase() ===
-                          "PENDENTE";
-                      return (
-                        <article
-                          key={denuncia.id}
-                          className="rounded-xl bg-[var(--creme)] p-4"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h3 className="font-bold text-[var(--azul)]">
-                                Denúncia #{denuncia.id}
-                              </h3>
-                              <p className="mt-1 text-sm text-gray-600">
-                                {denuncia.motivo || "Sem motivo"}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-500">
-                                {denuncia.mensagem || "Sem descrição"}
-                              </p>
-                            </div>
-                            <span className="rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">
-                              {denuncia.status || "ABERTA"}
-                            </span>
-                          </div>
-                          {aberta && (
-                            <div className="mt-3 flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void editarDenuncia(denuncia)}
-                                className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-[var(--azul)]"
-                              >
-                                <FaEdit className="mr-1 inline" />
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void excluirDenuncia(denuncia.id)
-                                }
-                                className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-[var(--coral)]"
-                              >
-                                <FaTrash className="mr-1 inline" />
-                                Retirar
-                              </button>
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-xl bg-[var(--creme)] p-6 text-center">
-                    <FaShieldAlt className="mx-auto text-2xl text-[var(--coral)]" />
-                    <p className="mt-3 font-bold text-[var(--azul)]">
-                      Você não possui denúncias.
-                    </p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Caso precise relatar um problema, use a página de
-                      denúncias.
                     </p>
                   </div>
                 )}

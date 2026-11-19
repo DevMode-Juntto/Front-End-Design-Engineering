@@ -2,92 +2,64 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   FaArrowLeft,
-  FaBell,
   FaBoxOpen,
-  FaExclamationTriangle,
   FaPlus,
   FaTags,
   FaTrash,
   FaUsers,
 } from "react-icons/fa";
 import { api, obterSessao } from "../../services/api";
-import type { Categoria, Denuncia, Pedido, Usuario } from "../../types/types";
+import type { Categoria, Pedido, Usuario } from "../../types/types";
 
-type Aba = "usuarios" | "categorias" | "pedidos" | "denuncias" | "avisos";
+type Aba = "usuarios" | "categorias" | "pedidos";
 
 const abas: { id: Aba; titulo: string; descricao: string }[] = [
   {
     id: "usuarios",
     titulo: "Usuários",
-    descricao: "Gerencie contas e status de acesso.",
+    descricao: "Consulte as contas cadastradas.",
   },
   {
     id: "categorias",
     titulo: "Categorias",
-    descricao: "Cadastre categorias de ajuda.",
-  },
-  { id: "pedidos", titulo: "Pedidos", descricao: "Acompanhe pedidos abertos." },
-  {
-    id: "denuncias",
-    titulo: "Denúncias",
-    descricao: "Analise e atualize denúncias.",
+    descricao: "Cadastre e organize categorias.",
   },
   {
-    id: "avisos",
-    titulo: "Avisos",
-    descricao: "Envie uma notificação para um usuário.",
+    id: "pedidos",
+    titulo: "Pedidos",
+    descricao: "Consulte os pedidos publicados.",
   },
 ];
 
-// traduz o status da denúncia p ficar mais claro
-function nomeStatusDenuncia(status?: string) {
-  const nomes: Record<string, string> = {
-    PENDENTE: "Pendente",
-    ABERTA: "Pendente",
-    EM_ANALISE: "Em análise",
-    RESOLVIDA: "Resolvida",
-  };
-  return nomes[String(status || "PENDENTE").toUpperCase()] || "Pendente";
-}
-
-// controla as áreas e ações do painel admin
+// controla as áreas compatíveis com a API hospedada
 export default function Admin() {
   const [aba, setAba] = useState<Aba>("usuarios");
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [denuncias, setDenuncias] = useState<Denuncia[]>([]);
-  const [denunciaSelecionada, setDenunciaSelecionada] =
-    useState<Denuncia | null>(null);
-  const [filtroDenuncia, setFiltroDenuncia] = useState("TODAS");
   const [mensagem, setMensagem] = useState("");
   const [carregando, setCarregando] = useState(true);
   const sessao = obterSessao();
   const usuarioAdministrador = sessao?.id || 1;
-  const [destinatarioAviso, setDestinatarioAviso] = useState("");
-  const [mensagemAviso, setMensagemAviso] = useState("");
 
-  // busca os dados usados no painel
+  // busca só os dados que existem no backend
   async function carregar() {
     setCarregando(true);
     setMensagem("");
     try {
-      const [listaUsuarios, listaCategorias, listaPedidos, listaDenuncias] =
-        await Promise.all([
-          api.listarUsuarios(),
-          api.listarCategorias(),
-          api.listarPedidos(),
-          api.listarDenuncias(usuarioAdministrador),
-        ]);
+      const [listaUsuarios, listaCategorias, listaPedidos] = await Promise.all([
+        api.listarUsuarios(),
+        api.listarCategorias(),
+        api.listarPedidos(),
+      ]);
       setUsuarios(listaUsuarios);
       setCategorias(listaCategorias);
       setPedidos(listaPedidos);
-      setDenuncias(listaDenuncias);
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
           ? erroApi.message
-          : "Não foi possível carregar os dados administrativos.",
+          : "Não foi possível carregar os dados.",
       );
     } finally {
       setCarregando(false);
@@ -95,64 +67,11 @@ export default function Admin() {
   }
 
   useEffect(() => {
-    void carregar();
+    const timer = window.setTimeout(() => void carregar(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  // ativa ou desativa um usuário
-  async function alterarStatusUsuario(usuario: Usuario) {
-    const ativo = String(usuario.status || "ATIVO").toUpperCase() === "ATIVO";
-    if (
-      !window.confirm(
-        ativo
-          ? `Tem certeza que deseja desativar o usuário ${usuario.nome}?`
-          : `Deseja reativar o usuário ${usuario.nome}?`,
-      )
-    )
-      return;
-    try {
-      if (ativo) await api.desativarUsuario(usuario.id);
-      else await api.alterarStatusUsuario(usuario.id, { status: "ATIVO" });
-      setMensagem(
-        ativo
-          ? "Usuário desativado com sucesso."
-          : "Usuário ativado com sucesso.",
-      );
-      await carregar();
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível alterar o status do usuário.",
-      );
-    }
-  }
-
-  // envia um aviso para os usuários
-  async function enviarAviso() {
-    if (!destinatarioAviso || !mensagemAviso.trim()) {
-      setMensagem("Selecione um destinatário e escreva a mensagem do aviso.");
-      return;
-    }
-    try {
-      await api.criarNotificacao({
-        usuarioId: usuarioAdministrador,
-        idDestinatario: Number(destinatarioAviso),
-        mensagem: mensagemAviso.trim(),
-        idPedido: null,
-      });
-      setMensagemAviso("");
-      setDestinatarioAviso("");
-      setMensagem("Aviso enviado com sucesso.");
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível enviar o aviso.",
-      );
-    }
-  }
-
-  // cria uma nova categoria
+  // cria uma categoria usando o CRUD real
   async function criarCategoria() {
     const nome = window.prompt("Nome da nova categoria:");
     if (!nome?.trim()) return;
@@ -162,6 +81,7 @@ export default function Admin() {
         nome: nome.trim(),
         descricao: descricao.trim(),
       });
+      setMensagem("Categoria criada com sucesso.");
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -172,7 +92,7 @@ export default function Admin() {
     }
   }
 
-  // edita o nome de uma categoria
+  // edita uma categoria existente
   async function editarCategoria(categoria: Categoria) {
     const nome = window.prompt("Nome da categoria:", categoria.nome);
     if (!nome?.trim()) return;
@@ -183,6 +103,7 @@ export default function Admin() {
         nome: nome.trim(),
         descricao: descricao.trim(),
       });
+      setMensagem("Categoria atualizada com sucesso.");
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -198,6 +119,7 @@ export default function Admin() {
     if (!window.confirm(`Excluir a categoria “${categoria.nome}”?`)) return;
     try {
       await api.excluirCategoria(categoria.id, usuarioAdministrador);
+      setMensagem("Categoria excluída com sucesso.");
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -207,67 +129,6 @@ export default function Admin() {
       );
     }
   }
-
-  // remove um pedido pelo painel admin
-  async function removerPedido(pedido: Pedido) {
-    if (!window.confirm(`Remover o pedido “${pedido.titulo}”?`)) return;
-    try {
-      await api.removerPedidoComoAdministrador(pedido.id);
-      await carregar();
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível remover o pedido.",
-      );
-    }
-  }
-
-  // abre os detalhes de uma denúncia
-  async function verDenuncia(id: string | number) {
-    try {
-      setDenunciaSelecionada(
-        await api.buscarDenuncia(id, usuarioAdministrador),
-      );
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível abrir a denúncia.",
-      );
-    }
-  }
-
-  // muda o status de uma denúncia
-  async function atualizarDenuncia(denuncia: Denuncia, status: string) {
-    if (
-      !window.confirm(
-        `Alterar a denúncia #${denuncia.id} para “${nomeStatusDenuncia(status)}”?`,
-      )
-    )
-      return;
-    try {
-      await api.atualizarStatusDenuncia(denuncia.id, {
-        status: status.toUpperCase(),
-      });
-      await carregar();
-    } catch (erroApi) {
-      setMensagem(
-        erroApi instanceof Error
-          ? erroApi.message
-          : "Não foi possível atualizar a denúncia.",
-      );
-    }
-  }
-
-  const denunciasFiltradas = denuncias.filter((denuncia) => {
-    if (filtroDenuncia === "TODAS") return true;
-    const status = String(denuncia.status || "PENDENTE").toUpperCase();
-    return (
-      status === filtroDenuncia ||
-      (filtroDenuncia === "PENDENTE" && status === "ABERTA")
-    );
-  });
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-8">
@@ -289,8 +150,7 @@ export default function Admin() {
                 Painel administrador
               </h1>
               <p className="mt-1 text-sm text-gray-500">
-                Controle usuários, categorias, pedidos e denúncias em um só
-                lugar.
+                Consulte e gerencie os dados disponíveis na API.
               </p>
             </div>
           </div>
@@ -312,7 +172,7 @@ export default function Admin() {
           </p>
         )}
 
-        <nav className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <nav className="mb-6 grid gap-3 sm:grid-cols-3">
           {abas.map((item) => (
             <button
               type="button"
@@ -345,49 +205,29 @@ export default function Admin() {
                       Usuários
                     </h2>
                     <p className="text-sm text-gray-500">
-                      Ative ou desative o acesso de cada conta.
+                      A API não possui ações administrativas de status ou
+                      desativação.
                     </p>
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  {usuarios.map((usuario) => {
-                    const ativo =
-                      String(usuario.status || "ATIVO").toUpperCase() ===
-                      "ATIVO";
-                    return (
-                      <article
-                        key={usuario.id}
-                        className="rounded-2xl border border-gray-200 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-bold text-[var(--azul)]">
-                              {usuario.nome}
-                            </h3>
-                            <p className="mt-1 text-sm text-gray-500">
-                              ID {usuario.id} ·{" "}
-                              {usuario.email || "E-mail não informado"}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {usuario.bairro || "Bairro não informado"}
-                            </p>
-                          </div>
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${ativo ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-                          >
-                            {ativo ? "ATIVO" : "INATIVO"}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void alterarStatusUsuario(usuario)}
-                          className="mt-4 rounded-lg border border-[var(--azul)] px-3 py-2 text-sm font-bold text-[var(--azul)]"
-                        >
-                          {ativo ? "Desativar usuário" : "Ativar usuário"}
-                        </button>
-                      </article>
-                    );
-                  })}
+                  {usuarios.map((usuario) => (
+                    <article
+                      key={usuario.id}
+                      className="rounded-2xl border border-gray-200 p-4"
+                    >
+                      <h3 className="font-bold text-[var(--azul)]">
+                        {usuario.nome}
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        ID {usuario.id} ·{" "}
+                        {usuario.email || "E-mail não informado"}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {usuario.bairro || "Bairro não informado"}
+                      </p>
+                    </article>
+                  ))}
                 </div>
               </div>
             )}
@@ -460,10 +300,11 @@ export default function Admin() {
                   <FaBoxOpen className="text-2xl text-[var(--azul)]" />
                   <div>
                     <h2 className="text-xl font-bold text-[var(--azul)]">
-                      Pedidos abertos
+                      Pedidos publicados
                     </h2>
                     <p className="text-sm text-gray-500">
-                      Remova apenas pedidos que violam as regras.
+                      A API não possui remoção administrativa de pedidos, então
+                      esta área é somente consulta.
                     </p>
                   </div>
                 </div>
@@ -472,253 +313,26 @@ export default function Admin() {
                     pedidos.map((pedido) => (
                       <article
                         key={pedido.id}
-                        className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-gray-200 p-4"
+                        className="rounded-2xl border border-gray-200 p-4"
                       >
-                        <div>
-                          <h3 className="font-bold text-[var(--azul)]">
-                            {pedido.titulo}
-                          </h3>
-                          <p className="mt-1 text-sm text-gray-600">
-                            {pedido.descricao}
-                          </p>
-                          <p className="mt-2 text-xs text-gray-500">
-                            ID {pedido.id} ·{" "}
-                            {pedido.bairro || "Bairro não informado"} ·{" "}
-                            {pedido.status || "Sem status"}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void removerPedido(pedido)}
-                          className="flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-bold text-[var(--coral)]"
-                        >
-                          <FaTrash /> Remover
-                        </button>
-                      </article>
-                    ))
-                  ) : (
-                    <p className="rounded-xl bg-[var(--creme)] p-4 text-sm text-gray-500">
-                      Nenhum pedido aberto encontrado.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {aba === "denuncias" && (
-              <div>
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <FaExclamationTriangle className="text-2xl text-[var(--coral)]" />
-                    <div>
-                      <h2 className="text-xl font-bold text-[var(--azul)]">
-                        Central de denúncias
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        Veja o relato, analise o caso e atualize o andamento.
-                      </p>
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm font-bold text-[var(--azul)]">
-                    Mostrar:
-                    <select
-                      value={filtroDenuncia}
-                      onChange={(event) =>
-                        setFiltroDenuncia(event.target.value)
-                      }
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 font-normal"
-                    >
-                      <option value="TODAS">Todas</option>
-                      <option value="PENDENTE">Pendentes</option>
-                      <option value="EM_ANALISE">Em análise</option>
-                      <option value="RESOLVIDA">Resolvidas</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="mb-5 grid gap-3 sm:grid-cols-4">
-                  {[
-                    ["Total", denuncias.length, "TODAS"],
-                    [
-                      "Pendentes",
-                      denuncias.filter((item) =>
-                        ["PENDENTE", "ABERTA", undefined].includes(item.status),
-                      ).length,
-                      "PENDENTE",
-                    ],
-                    [
-                      "Em análise",
-                      denuncias.filter((item) => item.status === "EM_ANALISE")
-                        .length,
-                      "EM_ANALISE",
-                    ],
-                    [
-                      "Resolvidas",
-                      denuncias.filter((item) => item.status === "RESOLVIDA")
-                        .length,
-                      "RESOLVIDA",
-                    ],
-                  ].map(([titulo, total, filtro]) => (
-                    <button
-                      key={titulo}
-                      type="button"
-                      onClick={() => setFiltroDenuncia(String(filtro))}
-                      className="rounded-xl border border-gray-200 bg-[var(--creme)] p-3 text-left transition hover:border-[var(--azul)]"
-                    >
-                      <span className="block text-xs font-semibold text-gray-500">
-                        {titulo}
-                      </span>
-                      <span className="mt-1 block text-2xl font-bold text-[var(--azul)]">
-                        {total}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <div className="space-y-3">
-                  {denunciasFiltradas.length ? (
-                    denunciasFiltradas.map((denuncia) => (
-                      <article
-                        key={denuncia.id}
-                        className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-bold text-[var(--azul)]">
-                              Denúncia #{denuncia.id}
-                            </h3>
-                            <p className="mt-1 text-sm text-gray-600">
-                              Motivo: {denuncia.motivo || "Não informado"}
-                            </p>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Denunciante:{" "}
-                              {denuncia.usuarioId || "Não informado"}
-                              {denuncia.pedidoId
-                                ? ` · Pedido #${denuncia.pedidoId}`
-                                : ""}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-800">
-                            {nomeStatusDenuncia(denuncia.status)}
-                          </span>
-                        </div>
-                        <p className="mt-3 rounded-xl bg-[var(--creme)] p-3 text-sm text-gray-600">
-                          {denuncia.mensagem ||
-                            "O denunciante não adicionou uma descrição."}
+                        <h3 className="font-bold text-[var(--azul)]">
+                          {pedido.titulo}
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {pedido.descricao}
                         </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void verDenuncia(denuncia.id)}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-bold text-[var(--azul)]"
-                          >
-                            Ver detalhes
-                          </button>
-                          {String(
-                            denuncia.status || "PENDENTE",
-                          ).toUpperCase() !== "EM_ANALISE" &&
-                            String(
-                              denuncia.status || "PENDENTE",
-                            ).toUpperCase() !== "RESOLVIDA" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void atualizarDenuncia(denuncia, "EM_ANALISE")
-                                }
-                                className="rounded-lg bg-[var(--azul)] px-3 py-2 text-sm font-bold text-white"
-                              >
-                                Iniciar análise
-                              </button>
-                            )}
-                          {String(
-                            denuncia.status || "PENDENTE",
-                          ).toUpperCase() === "EM_ANALISE" && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void atualizarDenuncia(denuncia, "RESOLVIDA")
-                              }
-                              className="rounded-lg bg-[var(--verde)] px-3 py-2 text-sm font-bold text-white"
-                            >
-                              Marcar como resolvida
-                            </button>
-                          )}
-                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          ID {pedido.id} ·{" "}
+                          {pedido.bairro || "Bairro não informado"} ·{" "}
+                          {pedido.status || "Sem status"}
+                        </p>
                       </article>
                     ))
                   ) : (
                     <p className="rounded-xl bg-[var(--creme)] p-4 text-sm text-gray-500">
-                      Nenhuma denúncia encontrada com este filtro.
+                      Nenhum pedido encontrado.
                     </p>
                   )}
-                </div>
-                {denunciaSelecionada && (
-                  <div className="mt-5 rounded-2xl bg-[var(--creme)] p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-bold text-[var(--azul)]">
-                        Detalhes da denúncia #{denunciaSelecionada.id}
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => setDenunciaSelecionada(null)}
-                        className="text-sm font-bold text-[var(--coral)]"
-                      >
-                        Fechar
-                      </button>
-                    </div>
-                    <pre className="mt-4 overflow-x-auto whitespace-pre-wrap text-xs text-gray-600">
-                      {JSON.stringify(denunciaSelecionada, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-            {aba === "avisos" && (
-              <div>
-                <div className="mb-5 flex items-center gap-3">
-                  <FaBell className="text-2xl text-[var(--laranja)]" />
-                  <div>
-                    <h2 className="text-xl font-bold text-[var(--azul)]">
-                      Enviar aviso
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                      Envie uma notificação manual para um usuário.
-                    </p>
-                  </div>
-                </div>
-                <div className="max-w-xl space-y-4">
-                  <label className="flex flex-col gap-2 text-sm font-bold text-[var(--azul)]">
-                    Destinatário
-                    <select
-                      value={destinatarioAviso}
-                      onChange={(event) =>
-                        setDestinatarioAviso(event.target.value)
-                      }
-                      className="h-11 rounded-xl border border-gray-300 bg-white px-3 font-normal"
-                    >
-                      <option value="">Selecione um usuário</option>
-                      {usuarios.map((usuario) => (
-                        <option key={usuario.id} value={String(usuario.id)}>
-                          {usuario.nome} — ID {usuario.id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-2 text-sm font-bold text-[var(--azul)]">
-                    Mensagem
-                    <textarea
-                      value={mensagemAviso}
-                      onChange={(event) => setMensagemAviso(event.target.value)}
-                      rows={5}
-                      placeholder="Escreva o aviso para o usuário"
-                      className="rounded-xl border border-gray-300 p-3 font-normal"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void enviarAviso()}
-                    className="rounded-xl bg-[var(--verde)] px-5 py-3 font-bold text-white"
-                  >
-                    Enviar aviso
-                  </button>
                 </div>
               </div>
             )}

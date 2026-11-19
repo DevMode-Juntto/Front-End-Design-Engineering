@@ -11,7 +11,7 @@ import {
 } from "react-icons/fa";
 import Botao from "../../components/Botao/Botao";
 import { api, obterSessao } from "../../services/api";
-import type { Categoria } from "../../types/types";
+import type { Categoria, Pedido } from "../../types/types";
 
 // transforma a imagem p poder salvar no pedido
 function lerImagem(arquivo: File) {
@@ -34,6 +34,9 @@ export default function PublicarPedido() {
   const origemHistorico = parametros.get("origem") === "historico";
   const editando = Boolean(pedidoId);
   const [semPagamento, setSemPagamento] = useState(false);
+  const [tipoPublicacao, setTipoPublicacao] = useState<"AJUDA" | "OFERTA">(
+    "AJUDA",
+  );
   const [valor, setValor] = useState("");
   const [titulo, setTitulo] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
@@ -61,6 +64,9 @@ export default function PublicarPedido() {
         .buscarPedido(pedidoId)
         .then((pedido) => {
           setTitulo(pedido.titulo);
+          setTipoPublicacao(
+            pedido.tipoPublicacao === "OFERTA" ? "OFERTA" : "AJUDA",
+          );
           setCategoriaId(
             String(
               pedido.categoriaId ||
@@ -73,6 +79,12 @@ export default function PublicarPedido() {
           setBairro(pedido.bairro || "");
           setData(pedido.data || "");
           setValor(String(pedido.valor || 0));
+          setSemPagamento(
+            Boolean(
+              (pedido as Pedido & { naoIncluirPagamento?: boolean })
+                .naoIncluirPagamento,
+            ),
+          );
           const fotos = pedido.fotos;
           const fotoExistente = Array.isArray(fotos) ? fotos[0] : fotos;
           if (typeof fotoExistente === "string") {
@@ -116,24 +128,28 @@ export default function PublicarPedido() {
         imagem || (arquivoImagem ? await lerImagem(arquivoImagem) : "");
       if (pedidoId)
         await api.atualizarPedido(pedidoId, {
+          tipoPublicacao,
           titulo,
           categoriaId,
           descricao,
           bairro,
           data,
           valor: Number(valor || 0),
+          naoIncluirPagamento: semPagamento,
           ...(imagemAtual
             ? { fotos: [imagemAtual], imagem: imagemAtual, foto: imagemAtual }
             : {}),
         });
       else
         await api.criarPedido({
+          tipoPublicacao,
           titulo,
           categoriaId,
           descricao,
           bairro,
           data,
           valor: Number(valor || 0),
+          naoIncluirPagamento: semPagamento,
           ...(imagemAtual
             ? { fotos: [imagemAtual], imagem: imagemAtual, foto: imagemAtual }
             : {}),
@@ -247,6 +263,22 @@ export default function PublicarPedido() {
                 placeholder="Ex: Montar um armário"
                 className="h-11 rounded-xl border border-gray-300 px-4 font-normal outline-none transition focus:border-[var(--verde)]"
               />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-bold text-[var(--azul)]">
+              Tipo de publicação
+              <select
+                value={tipoPublicacao}
+                onChange={(event) =>
+                  setTipoPublicacao(event.target.value as "AJUDA" | "OFERTA")
+                }
+                className="h-11 rounded-xl border border-gray-300 bg-white px-4 font-normal outline-none transition focus:border-[var(--verde)]"
+              >
+                <option value="AJUDA">Preciso de ajuda</option>
+                <option value="OFERTA">Quero oferecer ajuda</option>
+              </select>
+              <span className="text-xs font-normal text-gray-500">
+                Em uma oferta, mais de uma pessoa pode ser aceita
+              </span>
             </label>
             <label className="flex flex-col gap-2 text-sm font-bold text-[var(--azul)]">
               Categoria

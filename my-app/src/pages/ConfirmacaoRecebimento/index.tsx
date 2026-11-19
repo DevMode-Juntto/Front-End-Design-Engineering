@@ -9,7 +9,7 @@ import {
 
 import ResumoRecebimento from "../../components/ResumoRecebimento/ResumoRecebimento";
 import { api, obterSessao } from "../../services/api";
-import type { Pedido } from "../../types/types";
+import type { Pedido, SolicitacaoAjuda } from "../../types/types";
 
 type ConfirmacaoRecebimentoProps = {
   nomeSolicitante?: string;
@@ -23,7 +23,14 @@ export default function ConfirmacaoRecebimento({
 }: ConfirmacaoRecebimentoProps) {
   const [parametros] = useSearchParams();
   const pedidoId = parametros.get("pedidoId");
+  const candidaturaInformada = parametros.get("idCandidatura");
   const [pedido, setPedido] = useState<Pedido | null>(null);
+  const [candidaturas, setCandidaturas] = useState<SolicitacaoAjuda[]>([]);
+  const [candidaturaId, setCandidaturaId] = useState(
+    candidaturaInformada || "",
+  );
+  const [nota, setNota] = useState(5);
+  const [textoFeedback, setTextoFeedback] = useState("");
   const [confirmado, setConfirmado] = useState(false);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
@@ -33,10 +40,29 @@ export default function ConfirmacaoRecebimento({
     if (pedidoId) {
       void api
         .buscarPedido(pedidoId)
-        .then(setPedido)
+        .then(async (pedidoRecebido) => {
+          setPedido(pedidoRecebido);
+          if (
+            pedidoRecebido.idCandidaturaAceita !== undefined &&
+            !candidaturaInformada
+          )
+            setCandidaturaId(String(pedidoRecebido.idCandidaturaAceita));
+          if (pedidoRecebido.tipoPublicacao === "OFERTA" && obterSessao()?.id) {
+            const lista = await api.listarSolicitacoesPedido(
+              pedidoId,
+              obterSessao()?.id,
+            );
+            const aceitas = lista.filter(
+              (item) => String(item.status).toUpperCase() === "ACEITA",
+            );
+            setCandidaturas(aceitas);
+            if (!candidaturaInformada && aceitas[0])
+              setCandidaturaId(String(aceitas[0].id));
+          }
+        })
         .catch(() => undefined);
     }
-  }, []);
+  }, [candidaturaInformada, pedidoId]);
 
   // confirma o recebimento do pagamento
   async function confirmarRecebimento() {
@@ -47,7 +73,15 @@ export default function ConfirmacaoRecebimento({
     setErro("");
     setCarregando(true);
     try {
-      await api.confirmarPagamento(pedidoId);
+      await api.confirmarPagamento(pedidoId, candidaturaId || undefined);
+      if (textoFeedback.trim() && candidaturaId) {
+        await api.criarComentario(pedidoId, {
+          usuarioId: obterSessao()?.id,
+          estrelas: nota,
+          texto: textoFeedback.trim(),
+          idCandidatura: candidaturaId,
+        });
+      }
       setConfirmado(true);
     } catch (erroApi) {
       setErro(
@@ -93,6 +127,28 @@ export default function ConfirmacaoRecebimento({
             </div>
 
             <div className="flex flex-col gap-7">
+              {candidaturas.length > 1 && (
+                <section className="rounded-2xl bg-[var(--creme)] p-4">
+                  <p className="font-bold text-[var(--azul)]">
+                    Escolha quem recebeu este pagamento
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {candidaturas.map((candidatura) => (
+                      <button
+                        key={candidatura.id}
+                        type="button"
+                        onClick={() => setCandidaturaId(String(candidatura.id))}
+                        className={`rounded-xl border p-3 text-left text-sm ${String(candidatura.id) === candidaturaId ? "border-[var(--verde)] bg-[var(--verde)]/10" : "border-gray-200 bg-white"}`}
+                      >
+                        <strong>
+                          {candidatura.prestador?.nome ||
+                            `Candidatura #${candidatura.id}`}
+                        </strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
               <ResumoRecebimento
                 nomeSolicitante={pedido?.solicitante?.nome || nomeSolicitante}
                 idSolicitante={pedido?.solicitante?.id}
@@ -124,6 +180,37 @@ export default function ConfirmacaoRecebimento({
                 </p>
               )}
 
+              <section className="rounded-2xl bg-[var(--creme)] p-5">
+                <h2 className="font-bold text-[var(--azul)]">
+                  Avalie a outra pessoa
+                </h2>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
+                  <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--azul)]">
+                    Estrelas
+                    <select
+                      value={nota}
+                      onChange={(event) => setNota(Number(event.target.value))}
+                      className="h-11 rounded-xl border border-gray-300 bg-white px-3"
+                    >
+                      {[1, 2, 3, 4, 5].map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--azul)]">
+                    Comentário
+                    <textarea
+                      value={textoFeedback}
+                      onChange={(event) => setTextoFeedback(event.target.value)}
+                      rows={3}
+                      className="rounded-xl border border-gray-300 bg-white p-3 font-normal"
+                      placeholder="Conte como foi a experiência"
+                    />
+                  </label>
+                </div>
+              </section>
               <button
                 type="button"
                 onClick={confirmarRecebimento}

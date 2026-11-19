@@ -8,7 +8,7 @@ import {
   FaMoneyBillWave,
 } from "react-icons/fa";
 import { api, obterSessao } from "../../services/api";
-import type { Pedido } from "../../types/types";
+import type { Pedido, SolicitacaoAjuda } from "../../types/types";
 
 type FinalizacaoProps = {
   temValor?: boolean;
@@ -24,15 +24,32 @@ export default function Finalizacao({ temValor = true }: FinalizacaoProps) {
   const [caixinha, setCaixinha] = useState(0);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [nota, setNota] = useState(5);
+  const [textoFeedback, setTextoFeedback] = useState("");
+  const [candidaturas, setCandidaturas] = useState<SolicitacaoAjuda[]>([]);
+  const [candidaturaId, setCandidaturaId] = useState("");
 
   useEffect(() => {
     document.title = "Finalização - Junttô";
     if (pedidoId) {
       void api
         .buscarPedido(pedidoId)
-        .then((pedidoRecebido) => {
+        .then(async (pedidoRecebido) => {
           setPedido(pedidoRecebido);
           setValorPagamento(Number(pedidoRecebido.valor || 0));
+          if (pedidoRecebido.idCandidaturaAceita !== undefined)
+            setCandidaturaId(String(pedidoRecebido.idCandidaturaAceita));
+          if (pedidoRecebido.tipoPublicacao === "OFERTA" && obterSessao()?.id) {
+            const lista = await api.listarSolicitacoesPedido(
+              pedidoId,
+              obterSessao()?.id,
+            );
+            const aceitas = lista.filter(
+              (item) => String(item.status).toUpperCase() === "ACEITA",
+            );
+            setCandidaturas(aceitas);
+            if (aceitas[0]) setCandidaturaId(String(aceitas[0].id));
+          }
         })
         .catch(() => undefined);
     }
@@ -47,11 +64,66 @@ export default function Finalizacao({ temValor = true }: FinalizacaoProps) {
     setErro("");
     setCarregando(true);
     try {
-      if (temValor)
+      if (pedido?.tipoPublicacao === "OFERTA") {
+        if (
+          candidaturas.some(
+            (item) =>
+              String(item.statusPagamento).toUpperCase() !== "CONFIRMADO",
+          )
+        ) {
+          setErro(
+            "Confirme o pagamento de todas as pessoas aceitas antes de concluir a oferta.",
+          );
+          setCarregando(false);
+          return;
+        }
+        await api.atualizarStatusPedido(pedidoId, {
+          usuarioId: obterSessao()?.id,
+          status: "CONCLUIDO",
+        });
+        for (const candidatura of candidaturas) {
+          const idAtual = String(candidatura.id);
+          const mesmaSelecionada = idAtual === candidaturaId;
+          const textoAtual = mesmaSelecionada
+            ? textoFeedback.trim()
+            : window.prompt(
+                `Comentário para ${candidatura.prestador?.nome || `candidatura #${idAtual}`}:`,
+              ) || "";
+          const notaAtual = mesmaSelecionada
+            ? nota
+            : Number(window.prompt("Nota de 1 a 5:", "5") || 5);
+          if (textoAtual || notaAtual) {
+            await api.criarComentario(pedidoId, {
+              usuarioId: obterSessao()?.id,
+              estrelas: Math.min(5, Math.max(1, notaAtual || 5)),
+              texto: textoAtual,
+              idCandidatura: candidatura.id,
+            });
+          }
+        }
+      } else if (temValor && !pedido?.naoIncluirPagamento)
         await api.registrarPagamento(pedidoId, {
           formaPagamento: "A_COMBINAR",
           valor: valorPagamento,
           caixinha,
+          usuarioId: obterSessao()?.id,
+          idCandidatura: pedido?.idCandidaturaAceita,
+        });
+      else
+        await api.atualizarStatusPedido(pedidoId, {
+          usuarioId: obterSessao()?.id,
+          status: "CONCLUIDO",
+        });
+      if (
+        pedido?.tipoPublicacao !== "OFERTA" &&
+        textoFeedback.trim() &&
+        candidaturaId
+      )
+        await api.criarComentario(pedidoId, {
+          usuarioId: obterSessao()?.id,
+          estrelas: nota,
+          texto: textoFeedback.trim(),
+          idCandidatura: candidaturaId,
         });
       navigate("/home-prototipo");
     } catch (erroApi) {
@@ -200,6 +272,54 @@ export default function Finalizacao({ temValor = true }: FinalizacaoProps) {
           </section>
         )}
 
+        {pedido?.tipoPublicacao === "OFERTA" && candidaturas.length > 0 && (
+          <section className="mt-6 rounded-2xl bg-[var(--creme)] p-5">
+            <label className="flex flex-col gap-2 text-sm font-bold text-[var(--azul)]">
+              Pessoa do feedback
+              <select
+                value={candidaturaId}
+                onChange={(event) => setCandidaturaId(event.target.value)}
+                className="h-11 rounded-xl border border-gray-300 bg-white px-3 font-normal"
+              >
+                {candidaturas.map((candidatura) => (
+                  <option key={candidatura.id} value={String(candidatura.id)}>
+                    {candidatura.prestador?.nome ||
+                      `Candidatura #${candidatura.id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+        )}
+        <section className="mt-6 rounded-2xl bg-[var(--creme)] p-5">
+          <h2 className="font-bold text-[var(--azul)]">Seu feedback</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
+            <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--azul)]">
+              Estrelas
+              <select
+                value={nota}
+                onChange={(event) => setNota(Number(event.target.value))}
+                className="h-11 rounded-xl border border-gray-300 bg-white px-3"
+              >
+                {[1, 2, 3, 4, 5].map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--azul)]">
+              Comentário
+              <textarea
+                value={textoFeedback}
+                onChange={(event) => setTextoFeedback(event.target.value)}
+                rows={3}
+                className="rounded-xl border border-gray-300 bg-white p-3 font-normal"
+                placeholder="Conte como foi a ajuda"
+              />
+            </label>
+          </div>
+        </section>
         {erro && (
           <p
             role="alert"
