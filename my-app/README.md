@@ -293,7 +293,7 @@ npm install
 ```bash
 VITE_API_URL=https://juntto-java.onrender.com   # API Java (ou http://localhost:8080)
 VITE_API_IA_URL=https://junnto-ia.onrender.com  # API de IA (ou http://localhost:5000)
-VITE_API_PYTHON_URL=                            # API Python: vazio = http://localhost:5001
+VITE_API_PYTHON_URL=                            # API Python: deixe vazio enquanto não estiver publicada
 ```
 
 4. Suba a API Java (veja o README do back-end) e rode o front:
@@ -347,4 +347,4 @@ Para colaborar com o projeto, siga as orientações abaixo:
  Prefixo     | Utilização                                     
  ----------- | ---------------------------------------------- 
  `feat:`     | Adição de uma nova funcionalidade.             
- `fix:`      | Correção de um erro.                           
+ `fix:`      | Correção de um erro.                           
