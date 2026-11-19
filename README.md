@@ -135,7 +135,7 @@ my-app/
 
 ## 🔴 Páginas dos Protótipos
 
-[HomePrototipo](./src/pages/HomePrototipo/index.tsx) | - Painel principal do usuário com oportunidades de ajuda, categorias, notificações e ajudas em processo.
+[Home](./src/pages/HomePrototipo/index.tsx) | - Painel principal do usuário com oportunidades de ajuda, categorias, notificações e ajudas em processo.
 
 [Publicar pedido](./src/pages/PublicarPedido/index.tsx) | - Permite publicar um pedido de ajuda.
 
@@ -149,7 +149,7 @@ my-app/
 
 [Confirmação de recebimento](./src/pages/ConfirmacaoRecebimento/index.tsx) | - Permite que o prestador confirme o recebimento do pagamento e avalie o solicitante.
 
-[Painel administrador](./src/pages/Admin/index.tsx) | - Área administrativa para gerenciar usuários, categorias, pedidos, denúncias e enviar avisos.
+[Painel administrador](./src/pages/Admin/index.tsx) | - Área administrativa
 
 > As páginas desta seção são protótipos navegáveis para demonstração dos fluxos da plataforma.
 
