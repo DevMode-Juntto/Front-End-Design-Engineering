@@ -349,7 +349,7 @@ export default function Admin() {
                       Usuários
                     </h2>
                     <p className="text-sm text-gray-500">
-                      Ative ou desative o acesso de cada conta.
+                      Todas as contas cadastradas e informações
                     </p>
                   </div>
                 </div>
@@ -463,10 +463,6 @@ export default function Admin() {
                     <h2 className="text-xl font-bold text-[var(--azul)]">
                       Pedidos abertos
                     </h2>
-                    <p className="text-sm text-gray-500">
-                      Desative pedidos que violam as regras. A ação usa o status
-                      CANCELADO da API.
-                    </p>
                   </div>
                 </div>
                 <div className="space-y-3">
