@@ -1,211 +1,175 @@
+// Serviço da API Java (Spring Boot). Contrato completo no ENDPOINTS.md do back-end.
 import type {
+  Candidatura,
   Categoria,
-  Comentario,
-  Denuncia,
   DadosAtualizacaoUsuario,
   DadosCadastro,
   DadosCategoria,
-  DadosComentario,
-  DadosDenuncia,
+  DadosConfirmacaoPagamento,
+  DadosFeedback,
+  DadosLembrete,
   DadosLogin,
-  DadosPagamento,
+  DadosRespostaCandidatura,
   DadosPedido,
-  DadosStatusDenuncia,
   DadosStatusPedido,
-  DadosAceite,
-  DadosStatusUsuario,
-  DadosTags,
+  Feedback,
   FiltrosPedidos,
+  Identificador,
   LoginResposta,
   Notificacao,
-  Pedido,
   PapelPedido,
-  SolicitacaoAjuda,
+  Pedido,
   Usuario,
 } from "../types/types";
+import { consulta, corpo, criarCliente, URL_API_JAVA } from "./http";
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8080"
-).replace(/\/$/, "");
-
-async function requisicao<T>(
-  caminho: string,
-  opcoes: RequestInit = {},
-): Promise<T> {
-  const token = sessionStorage.getItem("junttô_token");
-  const headers = new Headers(opcoes.headers);
-  headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const resposta = await fetch(`${API_BASE_URL}${caminho}`, {
-    ...opcoes,
-    headers,
-  });
-  if (!resposta.ok) {
-    const mensagem = await resposta.text();
-    throw new Error(mensagem || `Erro na API: ${resposta.status}`);
-  }
-  if (resposta.status === 204) return undefined as T;
-  return (await resposta.json()) as T;
-}
-
-const json = (metodo: string, corpo: unknown): RequestInit => ({
-  method: metodo,
-  body: JSON.stringify(corpo),
-});
+const requisicao = criarCliente(URL_API_JAVA);
 
 export const api = {
-  cadastrar: (dados: DadosCadastro) =>
-    requisicao<Usuario>("/usuarios", json("POST", dados)),
-  login: (dados: DadosLogin) =>
-    requisicao<LoginResposta>("/login", json("POST", dados)),
+  // ---------------- usuários ----------------
+  cadastrar: (dados: DadosCadastro) => requisicao<Usuario>("/usuarios", corpo("POST", dados)),
+  login: (dados: DadosLogin) => requisicao<LoginResposta>("/login", corpo("POST", dados)),
   listarUsuarios: () => requisicao<Usuario[]>("/usuarios"),
-  buscarUsuario: (id: string | number, meuPerfil = false) =>
-    requisicao<Usuario>(
-      `/usuarios/${id}${meuPerfil ? `?usuarioId=${id}` : ""}`,
-    ),
-  atualizarUsuario: (id: string | number, dados: DadosAtualizacaoUsuario) =>
-    requisicao<Usuario>(`/usuarios/${id}`, json("PUT", dados)),
-  desativarUsuario: (id: string | number) =>
-    requisicao<void>(`/usuarios/${id}/desativar`, { method: "PATCH" }),
-  excluirUsuario: (id: string | number) =>
-    requisicao<void>(`/usuarios/${id}`, { method: "DELETE" }),
-  alterarStatusUsuario: (id: string | number, dados: DadosStatusUsuario) =>
-    requisicao<Usuario>(`/usuarios/${id}/status`, json("PATCH", dados)),
-  listarAtividades: (id: string | number, papel: PapelPedido) =>
-    requisicao<Pedido[]>(`/usuarios/${id}/pedidos?papel=${papel}`),
-  listarTags: (id: string | number) =>
-    requisicao<string[]>(`/usuarios/${id}/tags`),
-  salvarTags: (id: string | number, tags: DadosTags) =>
-    requisicao<string[]>(`/usuarios/${id}/tags`, json("PUT", tags)),
+  // meuPerfil = true traz e-mail e localização (só para o próprio usuário)
+  buscarUsuario: (id: Identificador, meuPerfil = false) =>
+    requisicao<Usuario>(`/usuarios/${id}${meuPerfil ? consulta({ usuarioId: id }) : ""}`),
+  atualizarUsuario: (id: Identificador, dados: DadosAtualizacaoUsuario) =>
+    requisicao<Usuario>(`/usuarios/${id}`, corpo("PUT", { ...dados, usuarioId: id })),
+  excluirUsuario: (id: Identificador) =>
+    requisicao<void>(`/usuarios/${id}${consulta({ usuarioId: id })}`, { method: "DELETE" }),
+  listarAtividades: (id: Identificador, papel: PapelPedido) =>
+    requisicao<Pedido[]>(`/usuarios/${id}/pedidos${consulta({ papel })}`),
+  listarTags: (id: Identificador) => requisicao<Categoria[]>(`/usuarios/${id}/tags`),
+  salvarTags: (id: Identificador, idsCategorias: Identificador[]) =>
+    requisicao<Categoria[]>(`/usuarios/${id}/tags`, corpo("PUT", { usuarioId: id, idsCategorias })),
+
+  // ---------------- categorias ----------------
   listarCategorias: () => requisicao<Categoria[]>("/categorias"),
-  buscarCategoria: (id: string | number) =>
-    requisicao<Categoria>(`/categorias/${id}`),
-  criarCategoria: (dados: DadosCategoria) =>
-    requisicao<Categoria>("/categorias", json("POST", dados)),
-  atualizarCategoria: (id: string | number, dados: DadosCategoria) =>
-    requisicao<Categoria>(`/categorias/${id}`, json("PUT", dados)),
-  excluirCategoria: (id: string | number, usuarioId: string | number) =>
-    requisicao<void>(`/categorias/${id}?usuarioId=${usuarioId}`, {
-      method: "DELETE",
-    }),
-  criarPedido: (dados: DadosPedido) =>
-    requisicao<Pedido>("/pedidos", json("POST", dados)),
-  listarPedidos: (filtros: FiltrosPedidos = {}) => {
-    const parametros = new URLSearchParams();
-    Object.entries(filtros).forEach(([chave, valor]) => {
-      if (valor !== undefined && valor !== "")
-        parametros.set(chave, String(valor));
-    });
-    const consulta = parametros.toString();
-    return requisicao<Pedido[]>(`/pedidos${consulta ? `?${consulta}` : ""}`);
-  },
-  buscarPedido: (id: string | number) => requisicao<Pedido>(`/pedidos/${id}`),
-  atualizarPedido: (id: string | number, dados: DadosPedido) =>
-    requisicao<Pedido>(`/pedidos/${id}`, json("PUT", dados)),
-  excluirPedido: (id: string | number, usuarioId: string | number) =>
-    requisicao<void>(`/pedidos/${id}?usuarioId=${usuarioId}`, {
-      method: "DELETE",
-    }),
-  removerPedidoComoAdministrador: (id: string | number) =>
-    requisicao<void>(`/pedidos/${id}/remover`, { method: "PATCH" }),
-  aceitarPedido: (
-    id: string | number,
-    usuarioId: string | number,
-    observacao?: string,
-  ) =>
-    requisicao<Pedido>(
-      `/pedidos/${id}/aceites`,
-      json("POST", { usuarioId, ...(observacao ? { observacao } : {}) }),
-    ),
-  listarAceites: (usuarioId: string | number) =>
-    requisicao<SolicitacaoAjuda[]>(`/aceites?usuarioId=${usuarioId}`),
-  desistirAceite: (id: string | number, usuarioId: string | number) =>
-    requisicao<void>(`/aceites/${id}?usuarioId=${usuarioId}&confirmar=true`, {
-      method: "DELETE",
-    }),
-  atualizarStatusPedido: (id: string | number, dados: DadosStatusPedido) =>
-    requisicao<Pedido>(`/pedidos/${id}/status`, json("PATCH", dados)),
-  listarSolicitacoesPedido: (
-    pedidoId: string | number,
-    _usuarioId?: string | number,
-  ) => requisicao<SolicitacaoAjuda[]>(`/pedidos/${pedidoId}/aceites`),
-  buscarSolicitacaoPedido: (
-    _pedidoId: string | number,
-    id: string | number,
-    _usuarioId?: string | number,
-  ) => requisicao<SolicitacaoAjuda>(`/aceites/${id}`),
-  atualizarSolicitacaoPedido: (
-    _pedidoId: string | number,
-    id: string | number,
-    dados: DadosAceite,
-  ) => requisicao<SolicitacaoAjuda>(`/aceites/${id}`, json("PUT", dados)),
-  registrarPagamento: (id: string | number, dados: DadosPagamento) =>
-    requisicao<Pedido>(`/pedidos/${id}/pagamento`, json("POST", dados)),
-  confirmarPagamento: (id: string | number) =>
-    requisicao<Pedido>(`/pedidos/${id}/pagamento/confirmacao`, {
-      method: "PATCH",
-    }),
-  criarComentario: (id: string | number, dados: DadosComentario) =>
-    requisicao<Comentario>(`/pedidos/${id}/comentarios`, json("POST", dados)),
-  listarComentariosPedido: (id: string | number) =>
-    requisicao<Comentario[]>(`/pedidos/${id}/comentarios`),
-  buscarComentario: (id: string | number) =>
-    requisicao<Comentario>(`/comentarios/${id}`),
-  listarComentariosUsuario: (usuarioId: string | number) =>
-    requisicao<Comentario[]>(`/comentarios?usuarioId=${usuarioId}`),
-  listarComentariosAutor: (autorId: string | number) =>
-    requisicao<Comentario[]>(`/comentarios?autorId=${autorId}`),
-  editarComentario: (id: string | number, dados: DadosComentario) =>
-    requisicao<Comentario>(`/comentarios/${id}`, json("PUT", dados)),
-  excluirComentario: (id: string | number, usuarioId: string | number) =>
-    requisicao<void>(`/comentarios/${id}?usuarioId=${usuarioId}`, {
-      method: "DELETE",
-    }),
-  listarNotificacoes: (usuarioId: string | number, somenteNaoLidas = false) =>
-    requisicao<Notificacao[]>(
-      `/notificacoes?usuarioId=${usuarioId}${somenteNaoLidas ? "&lida=false" : ""}`,
-    ),
-  buscarNotificacao: (id: string | number) =>
-    requisicao<Notificacao>(`/notificacoes/${id}`),
-  marcarNotificacaoLida: (id: string | number) =>
-    requisicao<Notificacao>(`/notificacoes/${id}`, json("PUT", { lida: true })),
-  excluirNotificacao: (id: string | number) =>
-    requisicao<void>(`/notificacoes/${id}`, { method: "DELETE" }),
-  criarNotificacao: (dados: Record<string, unknown>) =>
-    requisicao<Notificacao>("/notificacoes", json("POST", dados)),
-  criarDenuncia: (dados: DadosDenuncia) =>
-    requisicao<void>("/denuncias", json("POST", dados)),
-  listarDenuncias: (usuarioId?: string | number) =>
-    requisicao<Denuncia[]>(
-      `/denuncias${usuarioId === undefined ? "" : `?usuarioId=${usuarioId}`}`,
-    ),
-  buscarDenuncia: (id: string | number, usuarioId?: string | number) =>
-    requisicao<Denuncia>(
-      `/denuncias/${id}${usuarioId === undefined ? "" : `?usuarioId=${usuarioId}`}`,
-    ),
-  editarDenuncia: (id: string | number, dados: DadosDenuncia) =>
-    requisicao<Denuncia>(`/denuncias/${id}`, json("PUT", dados)),
-  excluirDenuncia: (id: string | number, usuarioId: string | number) =>
-    requisicao<void>(`/denuncias/${id}?usuarioId=${usuarioId}`, {
-      method: "DELETE",
-    }),
-  atualizarStatusDenuncia: (id: string | number, dados: DadosStatusDenuncia) =>
-    requisicao<Denuncia>(`/denuncias/${id}/status`, json("PATCH", dados)),
+  buscarCategoria: (id: Identificador) => requisicao<Categoria>(`/categorias/${id}`),
+  criarCategoria: (dados: DadosCategoria) => requisicao<Categoria>("/categorias", corpo("POST", dados)),
+  atualizarCategoria: (id: Identificador, dados: DadosCategoria) =>
+    requisicao<Categoria>(`/categorias/${id}`, corpo("PUT", dados)),
+  excluirCategoria: (id: Identificador) => requisicao<void>(`/categorias/${id}`, { method: "DELETE" }),
+
+  // ---------------- pedidos ----------------
+  criarPedido: (dados: DadosPedido) => requisicao<Pedido>("/pedidos", corpo("POST", dados)),
+  // oportunidades: só pedidos ABERTOS
+  listarPedidos: (filtros: FiltrosPedidos = {}) => requisicao<Pedido[]>(`/pedidos${consulta(filtros)}`),
+  // com usuarioId de um participante, os e-mails de contato aparecem
+  buscarPedido: (id: Identificador, usuarioId?: Identificador) =>
+    requisicao<Pedido>(`/pedidos/${id}${consulta({ usuarioId })}`),
+  atualizarPedido: (id: Identificador, dados: DadosPedido) =>
+    requisicao<Pedido>(`/pedidos/${id}`, corpo("PUT", dados)),
+  excluirPedido: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<void>(`/pedidos/${id}${consulta({ usuarioId })}`, { method: "DELETE" }),
+  atualizarStatusPedido: (id: Identificador, dados: DadosStatusPedido) =>
+    requisicao<Pedido>(`/pedidos/${id}/status`, corpo("PATCH", dados)),
+  // o pagamento acontece fora do app: quem RECEBEU confirma (idCandidatura em OFERTA com vários aceitos)
+  confirmarPagamento: (id: Identificador, dados: DadosConfirmacaoPagamento) =>
+    requisicao<Pedido>(`/pedidos/${id}/pagamento/confirmacao`, corpo("PATCH", dados)),
+
+  // ---------------- candidaturas ----------------
+  candidatar: (pedidoId: Identificador, usuarioId: Identificador) =>
+    requisicao<Candidatura>(`/pedidos/${pedidoId}/candidaturas`, corpo("POST", { usuarioId })),
+  // só o dono do pedido vê os candidatos
+  listarCandidaturasPedido: (pedidoId: Identificador, usuarioId: Identificador) =>
+    requisicao<Candidatura[]>(`/pedidos/${pedidoId}/candidaturas${consulta({ usuarioId })}`),
+  listarMinhasCandidaturas: (usuarioId: Identificador) =>
+    requisicao<Candidatura[]>(`/candidaturas${consulta({ usuarioId })}`),
+  buscarCandidatura: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<Candidatura>(`/candidaturas/${id}${consulta({ usuarioId })}`),
+  // dono do pedido aceita (ACEITA) ou recusa (RECUSADA)
+  responderCandidatura: (id: Identificador, dados: DadosRespostaCandidatura) =>
+    requisicao<Candidatura>(`/candidaturas/${id}`, corpo("PUT", dados)),
+  // candidato desiste (precisa confirmar: não pode se candidatar de novo)
+  desistirCandidatura: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<void>(`/candidaturas/${id}${consulta({ usuarioId, confirmar: true })}`, { method: "DELETE" }),
+
+  // ---------------- avaliações (feedbacks) ----------------
+  avaliar: (pedidoId: Identificador, dados: DadosFeedback) =>
+    requisicao<Feedback>(`/pedidos/${pedidoId}/feedbacks`, corpo("POST", dados)),
+  listarFeedbacksPedido: (pedidoId: Identificador) => requisicao<Feedback[]>(`/pedidos/${pedidoId}/feedbacks`),
+  // avaliações RECEBIDAS pelo usuário
+  listarFeedbacksUsuario: (usuarioId: Identificador) =>
+    requisicao<Feedback[]>(`/feedbacks${consulta({ usuarioId })}`),
+  buscarFeedback: (id: Identificador) => requisicao<Feedback>(`/feedbacks/${id}`),
+  editarFeedback: (id: Identificador, dados: DadosFeedback) =>
+    requisicao<Feedback>(`/feedbacks/${id}`, corpo("PUT", dados)),
+  excluirFeedback: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<void>(`/feedbacks/${id}${consulta({ usuarioId })}`, { method: "DELETE" }),
+
+  // ---------------- notificações ----------------
+  listarNotificacoes: (usuarioId: Identificador, somenteNaoLidas = false) =>
+    requisicao<Notificacao[]>(`/notificacoes${consulta({ usuarioId, lida: somenteNaoLidas ? false : undefined })}`),
+  buscarNotificacao: (id: Identificador) => requisicao<Notificacao>(`/notificacoes/${id}`),
+  // a API só deixa o destinatário (usuarioId) alterar ou apagar a notificação
+  marcarNotificacaoLida: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<Notificacao>(`/notificacoes/${id}`, corpo("PUT", { usuarioId, lida: true })),
+  excluirNotificacao: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<void>(`/notificacoes/${id}${consulta({ usuarioId })}`, { method: "DELETE" }),
+  enviarLembrete: (dados: DadosLembrete) => requisicao<Notificacao>("/notificacoes", corpo("POST", dados)),
 };
 
+// ---------------- sessão (usuário logado) ----------------
+
+const CHAVE_SESSAO = "junttô_usuario";
+
 export function salvarSessao(usuario: LoginResposta) {
-  sessionStorage.setItem("junttô_usuario", JSON.stringify(usuario));
-  if (usuario.token) sessionStorage.setItem("junttô_token", usuario.token);
+  sessionStorage.setItem(CHAVE_SESSAO, JSON.stringify(usuario));
 }
 
 export function obterSessao(): LoginResposta | null {
-  const valor = sessionStorage.getItem("junttô_usuario");
+  const valor = sessionStorage.getItem(CHAVE_SESSAO);
   if (!valor) return null;
   try {
     return JSON.parse(valor) as LoginResposta;
   } catch {
-    sessionStorage.removeItem("junttô_usuario");
+    sessionStorage.removeItem(CHAVE_SESSAO);
     return null;
   }
 }
+
+export function encerrarSessao() {
+  sessionStorage.removeItem(CHAVE_SESSAO);
+}
+
+// ---------------- utilidades de exibição ----------------
+
+export function nomeCompleto(usuario?: Pick<Usuario, "nome" | "sobrenome"> | null) {
+  if (!usuario) return "";
+  return [usuario.nome, usuario.sobrenome].filter(Boolean).join(" ");
+}
+
+export function formatarValor(pedido: Pick<Pedido, "valor" | "naoIncluirPagamento" | "recompensa">) {
+  if (pedido.naoIncluirPagamento || pedido.valor == null) {
+    return pedido.recompensa ? `Sem pagamento · ${pedido.recompensa}` : "Sem pagamento";
+  }
+  return `R$ ${pedido.valor.toFixed(2).replace(".", ",")}`;
+}
+
+export function formatarData(data?: string | null) {
+  if (!data) return "Data não informada";
+  const d = new Date(data);
+  if (Number.isNaN(d.getTime())) return data;
+  return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+export const NOMES_STATUS: Record<string, string> = {
+  ABERTO: "Aberto",
+  EM_ANDAMENTO: "Em andamento",
+  CONCLUIDO: "Concluído",
+  CANCELADO: "Cancelado",
+};
+
+export const NOMES_STATUS_CANDIDATURA: Record<string, string> = {
+  PENDENTE: "Pendente",
+  ACEITA: "Aceita",
+  RECUSADA: "Recusada",
+  CANCELADA: "Cancelada",
+};
+
+export const NOMES_STATUS_PAGAMENTO: Record<string, string> = {
+  NAO_APLICAVEL: "Sem pagamento",
+  PENDENTE: "Aguardando confirmação",
+  CONFIRMADO: "Confirmado",
+};

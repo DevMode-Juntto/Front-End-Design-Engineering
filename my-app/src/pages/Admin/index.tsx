@@ -10,16 +10,21 @@ import {
   FaTrash,
   FaUsers,
 } from "react-icons/fa";
-import { api, obterSessao } from "../../services/api";
+import { api, nomeCompleto, NOMES_STATUS, obterSessao } from "../../services/api";
+import { API_PYTHON_DISPONIVEL, AVISO_API_PYTHON, apiPython } from "../../services/apiPython";
 import type { Categoria, Denuncia, Pedido, Usuario } from "../../types/types";
+
+// Painel de administração: usuários, categorias e pedidos vêm da API Java;
+// status de usuário, remoção de pedidos, avisos e denúncias ficam na API Python.
+type UsuarioAdmin = Usuario & { status?: string };
 
 type Aba = "usuarios" | "categorias" | "pedidos" | "denuncias" | "avisos";
 
-const abas: { id: Aba; titulo: string; descricao: string }[] = [
+const todasAbas: { id: Aba; titulo: string; descricao: string; python?: boolean }[] = [
   {
     id: "usuarios",
     titulo: "Usuários",
-    descricao: "Gerencie contas e status de acesso.",
+    descricao: API_PYTHON_DISPONIVEL ? "Gerencie contas e status de acesso." : "Consulte as contas cadastradas.",
   },
   {
     id: "categorias",
@@ -31,13 +36,18 @@ const abas: { id: Aba; titulo: string; descricao: string }[] = [
     id: "denuncias",
     titulo: "Denúncias",
     descricao: "Analise e atualize denúncias.",
+    python: true,
   },
   {
     id: "avisos",
     titulo: "Avisos",
     descricao: "Envie uma notificação para um usuário.",
+    python: true,
   },
 ];
+
+// abas que dependem da API Python só aparecem quando ela está configurada
+const abas = todasAbas.filter((item) => !item.python || API_PYTHON_DISPONIVEL);
 
 // traduz o status da denúncia p ficar mais claro
 function nomeStatusDenuncia(status?: string) {
@@ -53,7 +63,7 @@ function nomeStatusDenuncia(status?: string) {
 // controla as áreas e ações do painel admin
 export default function Admin() {
   const [aba, setAba] = useState<Aba>("usuarios");
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuarios, setUsuarios] = useState<UsuarioAdmin[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [denuncias, setDenuncias] = useState<Denuncia[]>([]);
@@ -63,7 +73,7 @@ export default function Admin() {
   const [mensagem, setMensagem] = useState("");
   const [carregando, setCarregando] = useState(true);
   const sessao = obterSessao();
-  const usuarioAdministrador = sessao?.id || 1;
+  const usuarioAdministrador = sessao?.id || "1";
   const [destinatarioAviso, setDestinatarioAviso] = useState("");
   const [mensagemAviso, setMensagemAviso] = useState("");
 
@@ -72,17 +82,21 @@ export default function Admin() {
     setCarregando(true);
     setMensagem("");
     try {
-      const [listaUsuarios, listaCategorias, listaPedidos, listaDenuncias] =
-        await Promise.all([
-          api.listarUsuarios(),
-          api.listarCategorias(),
-          api.listarPedidos(),
-          api.listarDenuncias(usuarioAdministrador),
-        ]);
+      const [listaUsuarios, listaCategorias, listaPedidos] = await Promise.all([
+        api.listarUsuarios(),
+        api.listarCategorias(),
+        api.listarPedidos(),
+      ]);
       setUsuarios(listaUsuarios);
       setCategorias(listaCategorias);
       setPedidos(listaPedidos);
-      setDenuncias(listaDenuncias);
+      // denúncias vêm da API Python: se ela estiver fora do ar, o resto do painel continua funcionando
+      if (API_PYTHON_DISPONIVEL) try {
+        setDenuncias(await apiPython.listarDenuncias(usuarioAdministrador));
+      } catch {
+        setDenuncias([]);
+        setMensagem("Denúncias indisponíveis: a API Python não respondeu.");
+      }
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
@@ -99,7 +113,7 @@ export default function Admin() {
   }, []);
 
   // ativa ou desativa um usuário
-  async function alterarStatusUsuario(usuario: Usuario) {
+  async function alterarStatusUsuario(usuario: UsuarioAdmin) {
     const ativo = String(usuario.status || "ATIVO").toUpperCase() === "ATIVO";
     if (
       !window.confirm(
@@ -110,8 +124,8 @@ export default function Admin() {
     )
       return;
     try {
-      if (ativo) await api.desativarUsuario(usuario.id);
-      else await api.alterarStatusUsuario(usuario.id, { status: "ATIVO" });
+      if (ativo) await apiPython.desativarUsuario(usuario.id);
+      else await apiPython.alterarStatusUsuario(usuario.id, { status: "ATIVO" });
       setMensagem(
         ativo
           ? "Usuário desativado com sucesso."
@@ -134,11 +148,10 @@ export default function Admin() {
       return;
     }
     try {
-      await api.criarNotificacao({
+      await apiPython.enviarAviso({
         usuarioId: usuarioAdministrador,
-        idDestinatario: Number(destinatarioAviso),
+        idDestinatario: destinatarioAviso,
         mensagem: mensagemAviso.trim(),
-        idPedido: null,
       });
       setMensagemAviso("");
       setDestinatarioAviso("");
@@ -156,12 +169,8 @@ export default function Admin() {
   async function criarCategoria() {
     const nome = window.prompt("Nome da nova categoria:");
     if (!nome?.trim()) return;
-    const descricao = window.prompt("Descrição da categoria:") || "";
     try {
-      await api.criarCategoria({
-        nome: nome.trim(),
-        descricao: descricao.trim(),
-      });
+      await api.criarCategoria({ nome: nome.trim() });
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -176,13 +185,8 @@ export default function Admin() {
   async function editarCategoria(categoria: Categoria) {
     const nome = window.prompt("Nome da categoria:", categoria.nome);
     if (!nome?.trim()) return;
-    const descricao =
-      window.prompt("Descrição da categoria:", categoria.descricao || "") || "";
     try {
-      await api.atualizarCategoria(categoria.id, {
-        nome: nome.trim(),
-        descricao: descricao.trim(),
-      });
+      await api.atualizarCategoria(categoria.id, { nome: nome.trim() });
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -197,7 +201,7 @@ export default function Admin() {
   async function excluirCategoria(categoria: Categoria) {
     if (!window.confirm(`Excluir a categoria “${categoria.nome}”?`)) return;
     try {
-      await api.excluirCategoria(categoria.id, usuarioAdministrador);
+      await api.excluirCategoria(categoria.id);
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -212,7 +216,7 @@ export default function Admin() {
   async function removerPedido(pedido: Pedido) {
     if (!window.confirm(`Remover o pedido “${pedido.titulo}”?`)) return;
     try {
-      await api.removerPedidoComoAdministrador(pedido.id);
+      await apiPython.removerPedido(pedido.id);
       await carregar();
     } catch (erroApi) {
       setMensagem(
@@ -224,11 +228,9 @@ export default function Admin() {
   }
 
   // abre os detalhes de uma denúncia
-  async function verDenuncia(id: string | number) {
+  async function verDenuncia(id: string) {
     try {
-      setDenunciaSelecionada(
-        await api.buscarDenuncia(id, usuarioAdministrador),
-      );
+      setDenunciaSelecionada(await apiPython.buscarDenuncia(id, usuarioAdministrador));
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
@@ -247,7 +249,7 @@ export default function Admin() {
     )
       return;
     try {
-      await api.atualizarStatusDenuncia(denuncia.id, {
+      await apiPython.atualizarStatusDenuncia(denuncia.id, {
         status: status.toUpperCase(),
       });
       await carregar();
@@ -312,6 +314,12 @@ export default function Admin() {
           </p>
         )}
 
+        {!API_PYTHON_DISPONIVEL && (
+          <p className="mb-5 rounded-xl bg-[var(--creme)] p-4 text-sm text-[var(--azul)]">
+            {AVISO_API_PYTHON} Por enquanto, o painel mostra os dados da API Java.
+          </p>
+        )}
+
         <nav className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {abas.map((item) => (
             <button
@@ -362,29 +370,32 @@ export default function Admin() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <h3 className="font-bold text-[var(--azul)]">
-                              {usuario.nome}
+                              {nomeCompleto(usuario)}
                             </h3>
                             <p className="mt-1 text-sm text-gray-500">
                               ID {usuario.id} ·{" "}
-                              {usuario.email || "E-mail não informado"}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {usuario.bairro || "Bairro não informado"}
+                              {usuario.mediaEstrelas != null
+                                ? `${usuario.mediaEstrelas.toFixed(1)} estrelas`
+                                : "Sem avaliações"}
                             </p>
                           </div>
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${ativo ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-                          >
-                            {ativo ? "ATIVO" : "INATIVO"}
-                          </span>
+                          {API_PYTHON_DISPONIVEL && (
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-bold ${ativo ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                            >
+                              {ativo ? "ATIVO" : "INATIVO"}
+                            </span>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void alterarStatusUsuario(usuario)}
-                          className="mt-4 rounded-lg border border-[var(--azul)] px-3 py-2 text-sm font-bold text-[var(--azul)]"
-                        >
-                          {ativo ? "Desativar usuário" : "Ativar usuário"}
-                        </button>
+                        {API_PYTHON_DISPONIVEL && (
+                          <button
+                            type="button"
+                            onClick={() => void alterarStatusUsuario(usuario)}
+                            className="mt-4 rounded-lg border border-[var(--azul)] px-3 py-2 text-sm font-bold text-[var(--azul)]"
+                          >
+                            {ativo ? "Desativar usuário" : "Ativar usuário"}
+                          </button>
+                        )}
                       </article>
                     );
                   })}
@@ -424,9 +435,6 @@ export default function Admin() {
                         <h3 className="font-bold text-[var(--azul)]">
                           {categoria.nome}
                         </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          {categoria.descricao || "Sem descrição"}
-                        </p>
                         <span className="text-xs text-gray-400">
                           ID {categoria.id}
                         </span>
@@ -483,17 +491,19 @@ export default function Admin() {
                           </p>
                           <p className="mt-2 text-xs text-gray-500">
                             ID {pedido.id} ·{" "}
-                            {pedido.bairro || "Bairro não informado"} ·{" "}
-                            {pedido.status || "Sem status"}
+                            {pedido.nomeCategoria} ·{" "}
+                            {NOMES_STATUS[pedido.status] || pedido.status || "Sem status"}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void removerPedido(pedido)}
-                          className="flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-bold text-[var(--coral)]"
-                        >
-                          <FaTrash /> Remover
-                        </button>
+                        {API_PYTHON_DISPONIVEL && (
+                          <button
+                            type="button"
+                            onClick={() => void removerPedido(pedido)}
+                            className="flex items-center gap-2 rounded-lg border border-[var(--coral)] px-3 py-2 text-sm font-bold text-[var(--coral)]"
+                          >
+                            <FaTrash /> Remover
+                          </button>
+                        )}
                       </article>
                     ))
                   ) : (

@@ -6,14 +6,14 @@ import {
   FaCommentDots,
   FaEdit,
   FaIdCard,
-  FaMapMarkerAlt,
   FaSave,
+  FaStar,
   FaTrash,
   FaUserCircle,
 } from "react-icons/fa";
 import CampoPerfil from "../../components/Perfil/Perfil";
 import { api, obterSessao } from "../../services/api";
-import type { Categoria, Comentario, Usuario } from "../../types/types";
+import type { Categoria, Feedback, Usuario } from "../../types/types";
 
 type PerfilProps = { ehDono?: boolean; idUsuario?: string };
 
@@ -24,13 +24,14 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
   const sessao = obterSessao();
   const id = idUsuario || parametros.id || String(sessao?.id || "");
   const [usuario, setUsuario] = useState<Usuario | null>(null);
-  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [avaliacoes, setAvaliacoes] = useState<Feedback[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [minhasCategorias, setMinhasCategorias] = useState<string[]>([]);
+  const [minhasCategorias, setMinhasCategorias] = useState<Categoria[]>([]);
   const [categoriaSelecionada, setCategoriaSelecionada] = useState("");
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState("");
-  const [bairro, setBairro] = useState("");
+  const [sobrenome, setSobrenome] = useState("");
+  const [fotoUrl, setFotoUrl] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState("");
@@ -42,21 +43,22 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
       api.buscarUsuario(id, ehDono),
       api.listarTags(id),
       api.listarCategorias(),
+      api.listarFeedbacksUsuario(id),
     ])
-      .then(([dados, tags, listaCategorias]) => {
+      .then(([dados, tags, listaCategorias, listaAvaliacoes]) => {
         setUsuario(dados);
         setNome(dados.nome);
-        setBairro(dados.bairro || "");
+        setSobrenome(dados.sobrenome || "");
+        setFotoUrl(dados.fotoUrl || "");
         setMinhasCategorias(tags);
         setCategorias(listaCategorias);
-        // a API hospedada ainda não possui endpoint de comentários
-        setComentarios([]);
+        setAvaliacoes(listaAvaliacoes);
       })
       .catch(() => setMensagem("Não foi possível carregar este perfil."))
       .finally(() => setCarregando(false));
   }, [id, ehDono]);
 
-  // salva as mudanças feitas no perfil
+  // salva ediçoes feitas no perfil
   async function salvar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSalvando(true);
@@ -64,20 +66,27 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
     try {
       const atualizado = await api.atualizarUsuario(id, {
         nome: nome.trim(),
-        bairro: bairro.trim(),
+        sobrenome: sobrenome.trim(),
+        fotoUrl: fotoUrl.trim() || null,
+        latitude: usuario?.latitude ?? null,
+        longitude: usuario?.longitude ?? null,
       });
-      const categoriasAtualizadas = await api.salvarTags(id, minhasCategorias);
+      const categoriasAtualizadas = await api.salvarTags(
+        id,
+        minhasCategorias.map((categoria) => categoria.id),
+      );
       setUsuario(atualizado);
       setNome(atualizado.nome);
-      setBairro(atualizado.bairro || "");
+      setSobrenome(atualizado.sobrenome || "");
+      setFotoUrl(atualizado.fotoUrl || "");
       setMinhasCategorias(categoriasAtualizadas);
       setEditando(false);
-      setMensagem("Perfil atualizado com sucesso.");
+      setMensagem("Perfil atualizado com sucesso");
     } catch (erroApi) {
       setMensagem(
         erroApi instanceof Error
           ? erroApi.message
-          : "Não foi possível atualizar o perfil.",
+          : "Não foi possível atualizar o perfil",
       );
     } finally {
       setSalvando(false);
@@ -89,15 +98,16 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
     const categoria = categorias.find(
       (item) => String(item.id) === categoriaSelecionada,
     );
-    if (!categoria || minhasCategorias.includes(categoria.nome)) return;
-    setMinhasCategorias((anteriores) => [...anteriores, categoria.nome]);
+    if (!categoria || minhasCategorias.some((item) => item.id === categoria.id)) return;
+    setMinhasCategorias((anteriores) => [...anteriores, categoria]);
     setCategoriaSelecionada("");
   }
 
-  // cancela a edição e volta aos dados antigos
+  //cancela a edição e volta aos dados antigos
   function cancelarEdicao() {
     setNome(usuario?.nome || "");
-    setBairro(usuario?.bairro || "");
+    setSobrenome(usuario?.sobrenome || "");
+    setFotoUrl(usuario?.fotoUrl || "");
     setCategoriaSelecionada("");
     setEditando(false);
     void api
@@ -106,7 +116,7 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
       .catch(() => undefined);
   }
 
-  // exclui a conta depois da confirmação
+  // exclui a conta dps da confirmaçao
   async function excluirConta() {
     const confirmou = window.confirm(
       "Tem certeza que deseja excluir sua conta? Essa ação não pode ser desfeita.",
@@ -175,20 +185,31 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
 
         <section className="bg-gradient-to-br from-[var(--azul)] to-[#264b70] px-5 py-9 text-white sm:px-10">
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
-            <FaUserCircle className="text-8xl text-white/90" />
+            {usuario?.fotoUrl ? (
+              <img
+                src={usuario.fotoUrl}
+                alt={`Foto de ${usuario.nome}`}
+                className="size-24 rounded-full border-4 border-white/30 object-cover"
+              />
+            ) : (
+              <FaUserCircle className="text-8xl text-white/90" />
+            )}
             <div className="text-center sm:text-left">
               <p className="text-sm font-medium text-white/70">
                 Perfil do usuário
               </p>
               <h2 className="mt-1 text-3xl font-bold">
-                {usuario?.nome || "Usuário"}
+                {usuario ? `${usuario.nome} ${usuario.sobrenome || ""}` : "Usuário"}
               </h2>
               <div className="mt-3 flex flex-wrap justify-center gap-2 text-sm text-white/85 sm:justify-start">
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5">
                   <FaIdCard /> ID: {usuario?.id || id}
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5">
-                  <FaMapMarkerAlt /> {usuario?.bairro || "Bairro não informado"}
+                  <FaStar />{" "}
+                  {usuario?.mediaEstrelas != null
+                    ? `${usuario.mediaEstrelas.toFixed(1)} (${usuario.totalAvaliacoes} avaliaç${usuario.totalAvaliacoes === 1 ? "ão" : "ões"})`
+                    : "Sem avaliações"}
                 </span>
               </div>
             </div>
@@ -219,12 +240,20 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
                 </p>
               </div>
               <div className="space-y-4">
-                <CampoPerfil
-                  titulo="Nome completo"
-                  placeholder="Digite seu nome"
-                  value={nome}
-                  onChange={(event) => setNome(event.target.value)}
-                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <CampoPerfil
+                    titulo="Nome"
+                    placeholder="Digite seu nome"
+                    value={nome}
+                    onChange={(event) => setNome(event.target.value.slice(0, 20))}
+                  />
+                  <CampoPerfil
+                    titulo="Sobrenome"
+                    placeholder="Digite seu sobrenome"
+                    value={sobrenome}
+                    onChange={(event) => setSobrenome(event.target.value.slice(0, 20))}
+                  />
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="flex flex-col gap-2 text-sm font-semibold text-[var(--azul)]">
                     <span>ID</span>
@@ -236,10 +265,11 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
                     </span>
                   </div>
                   <CampoPerfil
-                    titulo="Bairro"
-                    placeholder="Digite seu bairro"
-                    value={bairro}
-                    onChange={(event) => setBairro(event.target.value)}
+                    titulo="Link da foto (opcional)"
+                    tipo="url"
+                    placeholder="https://..."
+                    value={fotoUrl}
+                    onChange={(event) => setFotoUrl(event.target.value.slice(0, 200))}
                   />
                 </div>
                 <div className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -269,7 +299,7 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
                       {categorias
                         .filter(
                           (categoria) =>
-                            !minhasCategorias.includes(categoria.nome),
+                            !minhasCategorias.some((item) => item.id === categoria.id),
                         )
                         .map((categoria) => (
                           <option key={categoria.id} value={categoria.id}>
@@ -290,15 +320,15 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
                     {minhasCategorias.map((categoria) => (
                       <button
                         type="button"
-                        key={categoria}
+                        key={categoria.id}
                         onClick={() =>
                           setMinhasCategorias((anteriores) =>
-                            anteriores.filter((item) => item !== categoria),
+                            anteriores.filter((item) => item.id !== categoria.id),
                           )
                         }
                         className="rounded-full bg-[var(--creme)] px-3.5 py-2 text-sm font-semibold text-[var(--azul)] transition hover:bg-red-50 hover:text-[var(--coral)]"
                       >
-                        {categoria} <span aria-hidden="true">×</span>
+                        {categoria.nome} <span aria-hidden="true">×</span>
                       </button>
                     ))}
                   </div>
@@ -347,10 +377,10 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
                   <div className="flex flex-wrap gap-2">
                     {minhasCategorias.map((categoria) => (
                       <span
-                        key={categoria}
+                        key={categoria.id}
                         className="rounded-full bg-[var(--creme)] px-4 py-2 text-sm font-semibold text-[var(--azul)]"
                       >
-                        {categoria}
+                        {categoria.nome}
                       </span>
                     ))}
                   </div>
@@ -370,7 +400,7 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
               </span>
               <div>
                 <h2 className="font-bold text-[var(--azul)]">
-                  Comentários recebidos
+                  Avaliações recebidas
                 </h2>
                 <p className="mt-1 text-xs text-gray-500">
                   Experiências compartilhadas por outras pessoas
@@ -378,29 +408,29 @@ export default function Perfil({ ehDono = true, idUsuario }: PerfilProps) {
               </div>
             </div>
             <div className="space-y-3 p-5">
-              {comentarios.length ? (
-                comentarios.map((comentario) => (
-                  <article
-                    key={comentario.id}
-                    className="rounded-xl bg-[var(--cinza)] p-4"
-                  >
-                    <p className="text-sm leading-relaxed text-[var(--azul)]">
-                      “
-                      {comentario.texto ||
-                        comentario.comentario ||
-                        "Comentário sem texto."}
-                      ”
-                    </p>
-                    <p className="mt-2 text-xs font-semibold text-gray-500">
-                      {comentario.autor?.nome || "Membro da comunidade"}
-                    </p>
-                  </article>
-                ))
+              {avaliacoes.length ? (
+                avaliacoes.map((avaliacao) => {
+                  // a avaliação recebida é o lado em que este usuário foi avaliado
+                  const comoAjudante = avaliacao.idAjudante === id;
+                  const estrelas = comoAjudante ? avaliacao.estrelasAjudante : avaliacao.estrelasAjudado;
+                  const texto = comoAjudante ? avaliacao.feedbackAjudante : avaliacao.feedbackAjudado;
+                  const autor = comoAjudante ? avaliacao.nomeAjudado : avaliacao.nomeAjudante;
+                  return (
+                    <article key={avaliacao.id} className="rounded-xl bg-[var(--cinza)] p-4">
+                      <p className="flex items-center gap-1 text-[var(--laranja)]" aria-label={`${estrelas} de 5 estrelas`}>
+                        {[1, 2, 3, 4, 5].map((nota) => (
+                          <FaStar key={nota} className={nota <= (estrelas || 0) ? "" : "text-gray-300"} />
+                        ))}
+                      </p>
+                      {texto && <p className="mt-2 text-sm leading-relaxed text-[var(--azul)]">“{texto}”</p>}
+                      <p className="mt-2 text-xs font-semibold text-gray-500">
+                        {autor} · {comoAjudante ? "ajudou em" : "recebeu ajuda em"} “{avaliacao.tituloPedido}”
+                      </p>
+                    </article>
+                  );
+                })
               ) : (
-                <p className="text-sm text-gray-500">
-                  Os comentários serão exibidos quando esse recurso estiver
-                  disponível na API hospedada.
-                </p>
+                <p className="text-sm text-gray-500">Ainda não há avaliações recebidas.</p>
               )}
             </div>
           </section>

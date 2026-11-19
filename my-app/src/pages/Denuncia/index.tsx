@@ -4,7 +4,8 @@ import { FaArrowLeft, FaCheckCircle, FaPaperPlane } from "react-icons/fa";
 
 import CampoDenuncia from "../../components/CampoDenuncia/CampoDenuncia";
 import AvisoDenuncia from "../../components/AvisoDenuncia/AvisoDenuncia";
-import { api } from "../../services/api";
+import { obterSessao } from "../../services/api";
+import { API_PYTHON_DISPONIVEL, AVISO_API_PYTHON, apiPython } from "../../services/apiPython";
 
 // controla o formulário de denúncia
 export default function Denuncia() {
@@ -12,6 +13,8 @@ export default function Denuncia() {
   const [motivo, setMotivo] = useState("");
   const [mensagem, setMensagem] = useState("");
   const [enviada, setEnviada] = useState(false);
+  const [erro, setErro] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
     document.title = "Denúncia - Junttô";
@@ -20,11 +23,30 @@ export default function Denuncia() {
   // envia a denúncia preenchida
   async function enviarDenuncia(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setErro("");
+    const sessao = obterSessao();
+    if (!sessao?.id) {
+      setErro("Entre na sua conta para enviar uma denúncia.");
+      return;
+    }
+    if (idUsuario.trim() === String(sessao.id)) {
+      setErro("Você não pode denunciar a própria conta.");
+      return;
+    }
+    setEnviando(true);
     try {
-      await api.criarDenuncia({ usuarioId: idUsuario, motivo, mensagem });
+      // denunciante = usuário logado; denunciado = ID informado no formulário
+      await apiPython.criarDenuncia({
+        usuarioId: sessao.id,
+        idUsuarioDenunciado: idUsuario.trim(),
+        motivo,
+        mensagem: mensagem.trim(),
+      });
       setEnviada(true);
-    } catch {
-      setMensagem("Não foi possível enviar a denúncia. Tente novamente.");
+    } catch (erroApi) {
+      setErro(erroApi instanceof Error ? erroApi.message : "Não foi possível enviar a denúncia. Tente novamente.");
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -81,6 +103,12 @@ export default function Denuncia() {
 
         <AvisoDenuncia />
 
+        {!API_PYTHON_DISPONIVEL && (
+          <p role="status" className="mb-6 rounded-xl bg-[var(--creme)] p-4 text-sm text-[var(--azul)]">
+            {AVISO_API_PYTHON} O formulário fica disponível assim que ela for publicada.
+          </p>
+        )}
+
         <form onSubmit={enviarDenuncia} className="flex flex-col gap-6">
           <CampoDenuncia titulo="ID do usuário denunciado">
             <input
@@ -125,6 +153,12 @@ export default function Denuncia() {
             />
           </CampoDenuncia>
 
+          {erro && (
+            <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {erro}
+            </p>
+          )}
+
           <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row">
             <Link
               to="/home"
@@ -135,10 +169,11 @@ export default function Denuncia() {
 
             <button
               type="submit"
-              className="flex min-h-14 flex-1 items-center justify-center gap-3 rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white shadow-md transition hover:brightness-95"
+              disabled={enviando || !API_PYTHON_DISPONIVEL}
+              className="flex min-h-14 flex-1 disabled:cursor-not-allowed disabled:opacity-60 items-center justify-center gap-3 rounded-xl bg-[var(--laranja)] px-5 py-3 font-bold text-white shadow-md transition hover:brightness-95"
             >
               <FaPaperPlane />
-              Enviar denúncia
+              {enviando ? "Enviando..." : "Enviar denúncia"}
             </button>
           </div>
         </form>

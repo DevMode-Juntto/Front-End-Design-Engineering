@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./base.css";
+import { instalarFeedbackBotoes } from "./services/feedbackBotoes";
 
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router";
 
@@ -22,12 +23,14 @@ import Historico from "./pages/Historico";
 import HomePrototipo from "./pages/HomePrototipo";
 import Admin from "./pages/Admin";
 import DetalhesPedido from "./pages/DetalhesPedido";
+import NaoEncontrada from "./pages/NaoEncontrada";
 
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
+    errorElement: <NaoEncontrada />,
     children: [
       { index: true, element: <Navigate to="/login" replace /> },
       { path: "home", element: <Home /> },
@@ -45,11 +48,14 @@ const router = createBrowserRouter([
       { path: "confirmacao-recebimento", element: <ConfirmacaoRecebimento /> },
       { path: "admin", element: <Admin /> },
       { path: "pedido/:id", element: <DetalhesPedido /> },
+      { path: "*", element: <NaoEncontrada /> },
     ],
   },
   { path: "/login", element: <Login /> },
   { path: "/cadastro", element: <Cadastro /> },
 ]);
+
+instalarFeedbackBotoes();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
