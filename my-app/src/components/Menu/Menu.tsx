@@ -29,12 +29,12 @@ const principais: ItemMenu[] = [
 
 const prototipos: ItemMenu[] = [
   {
-    nome: "HomePrototipo · Painel de ajuda",
+    nome: "Home",
     caminho: "/home-prototipo",
     icone: <FaHandsHelping />,
   },
   {
-    nome: "Publicar pedido de ajuda",
+    nome: "Publicar pedido",
     caminho: "/publicar-pedido",
     icone: <FaPlus />,
   },
