@@ -174,7 +174,7 @@ As imagens são:
   <tr>
     <td align="center" width="20%">
       <a href="https://github.com/Felipecmf">
-        <img src="./src/img/felipe-fernandes-cabral-mota.jpg" width="150" alt="Felipe Fernandes Cabral Mota" />
+        <img src="./my-app/src/img/felipe-fernandes-cabral-mota.jpg" width="150" alt="Felipe Fernandes Cabral Mota" />
         <br />
         <strong>Felipe Fernandes Cabral Mota</strong>
       </a>
@@ -193,7 +193,7 @@ As imagens são:
     </td>
     <td align="center" width="20%">
       <a href="https://github.com/helo0309">
-        <img src="./src/img/heloisa-costa-pereira.jpeg" width="150" alt="Heloisa Costa Pereira" />
+        <img src="./my-app/src/img/heloisa-costa-pereira.jpeg" width="150" alt="Heloisa Costa Pereira" />
         <br />
         <strong>Heloisa Costa Pereira</strong>
       </a>
@@ -212,7 +212,7 @@ As imagens são:
     </td>
     <td align="center" width="20%">
       <a href="https://github.com/isabellearaujod">
-        <img src="./src/img/isabelle-dantas-de-araujo.jpeg" width="150" alt="Isabelle Dantas de Araújo" />
+        <img src="./my-app/src/img/isabelle-dantas-de-araujo.jpeg" width="150" alt="Isabelle Dantas de Araújo" />
         <br />
         <strong>Isabelle Dantas de Araújo</strong>
       </a>
@@ -231,7 +231,7 @@ As imagens são:
     </td>
     <td align="center" width="20%">
       <a href="https://github.com/vtrzxy">
-        <img src="./src/img/vitor-reis-souza.jpeg" width="150" alt="Vitor Reis Souza" />
+        <img src="./my-app/src/img/vitor-reis-souza.jpeg" width="150" alt="Vitor Reis Souza" />
         <br />
         <strong>Vitor Reis Souza</strong>
       </a>
@@ -250,7 +250,7 @@ As imagens são:
     </td>
     <td align="center" width="20%">
       <a href="https://github.com/Yasmin5511">
-        <img src="./src/img/yasmin-nunes-dos-santos.jpeg" width="150" alt="Yasmin Nunes dos Santos" />
+        <img src="./my-app/src/img/yasmin-nunes-dos-santos.jpeg" width="150" alt="Yasmin Nunes dos Santos" />
         <br />
         <strong>Yasmin Nunes dos Santos</strong>
       </a>
