@@ -1,4 +1,4 @@
-# <img src="./src/img/logo-dev-mode.png" width="90" alt="Logo DevMode" /> + <img src="./src/img/logo-principal.png" width="120" alt="Logo Junttô" /> 
+# <img src="./my-app/src/img/logo-dev-mode.png" width="90" alt="Logo DevMode" /> + <img src="./my-app/src/img/logo-principal.png" width="120" alt="Logo Junttô" /> 
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg) ![Status: Em Desenvolvimento](https://img.shields.io/badge/Status-Em%20Desenvolvimento-blue)
 [![GitHub](https://img.shields.io/badge/GitHub-Juntto__DevMode-181717?style=flat&logo=github&logoColor=white)](https://github.com/DevMode-Juntto/Front-End-Design-Engineering)
