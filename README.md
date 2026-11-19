@@ -322,7 +322,7 @@ Usuários de teste da API Java (criados pelo `script.sql`, senha `senha123`): `a
 
 ### 🔴 Links do Projeto
 
-- **Repositório GitHub:** [Junttô - DevMode](https://github.com/DevMode-Juntto/Front-End-Design-Engineering)
+- **Repositório GitHub:** https://github.com/DevMode-Juntto/Front-End-Design-Engineering
 - **Vídeo de apresentação:** #######
 - **Projeto publicado:** https://junttodevmode1.vercel.app/
 - **Url da API:** https://juntto-java.onrender.com/
