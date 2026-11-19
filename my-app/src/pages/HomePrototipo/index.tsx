@@ -169,7 +169,7 @@ export default function HomePrototipo() {
   // marca uma notificação como lida
   async function marcarComoLida(notificacao: Notificacao) {
     if (notificacao.lida) return;
-    await api.marcarNotificacaoLida(notificacao.id);
+    await api.marcarNotificacaoLida(notificacao.id, notificacao.idUsuario);
     setNotificacoes((anteriores) =>
       anteriores.map((item) => (item.id === notificacao.id ? { ...item, lida: true } : item)),
     );
@@ -179,7 +179,7 @@ export default function HomePrototipo() {
   async function excluirNotificacao(notificacao: Notificacao) {
     if (!window.confirm("Tem certeza que deseja excluir esta notificação? Essa ação não pode ser desfeita.")) return;
     try {
-      await api.excluirNotificacao(notificacao.id);
+      await api.excluirNotificacao(notificacao.id, notificacao.idUsuario);
       setNotificacoes((anteriores) => anteriores.filter((item) => item.id !== notificacao.id));
     } catch (erroApi) {
       setMensagem(erroTexto(erroApi, "Não foi possível excluir a notificação."));
@@ -191,7 +191,7 @@ export default function HomePrototipo() {
     if (!notificacoes.length) return;
     if (!window.confirm("Tem certeza que deseja excluir todas as notificações? Essa ação não pode ser desfeita.")) return;
     try {
-      await Promise.all(notificacoes.map((notificacao) => api.excluirNotificacao(notificacao.id)));
+      await Promise.all(notificacoes.map((notificacao) => api.excluirNotificacao(notificacao.id, notificacao.idUsuario)));
       setNotificacoes([]);
       setNotificacoesAbertas(false);
     } catch (erroApi) {

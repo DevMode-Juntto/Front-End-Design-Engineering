@@ -34,13 +34,14 @@ export const api = {
   buscarUsuario: (id: Identificador, meuPerfil = false) =>
     requisicao<Usuario>(`/usuarios/${id}${meuPerfil ? consulta({ usuarioId: id }) : ""}`),
   atualizarUsuario: (id: Identificador, dados: DadosAtualizacaoUsuario) =>
-    requisicao<Usuario>(`/usuarios/${id}`, corpo("PUT", dados)),
-  excluirUsuario: (id: Identificador) => requisicao<void>(`/usuarios/${id}`, { method: "DELETE" }),
+    requisicao<Usuario>(`/usuarios/${id}`, corpo("PUT", { ...dados, usuarioId: id })),
+  excluirUsuario: (id: Identificador) =>
+    requisicao<void>(`/usuarios/${id}${consulta({ usuarioId: id })}`, { method: "DELETE" }),
   listarAtividades: (id: Identificador, papel: PapelPedido) =>
     requisicao<Pedido[]>(`/usuarios/${id}/pedidos${consulta({ papel })}`),
   listarTags: (id: Identificador) => requisicao<Categoria[]>(`/usuarios/${id}/tags`),
   salvarTags: (id: Identificador, idsCategorias: Identificador[]) =>
-    requisicao<Categoria[]>(`/usuarios/${id}/tags`, corpo("PUT", { idsCategorias })),
+    requisicao<Categoria[]>(`/usuarios/${id}/tags`, corpo("PUT", { usuarioId: id, idsCategorias })),
 
   // ---------------- categorias ----------------
   listarCategorias: () => requisicao<Categoria[]>("/categorias"),
@@ -101,9 +102,11 @@ export const api = {
   listarNotificacoes: (usuarioId: Identificador, somenteNaoLidas = false) =>
     requisicao<Notificacao[]>(`/notificacoes${consulta({ usuarioId, lida: somenteNaoLidas ? false : undefined })}`),
   buscarNotificacao: (id: Identificador) => requisicao<Notificacao>(`/notificacoes/${id}`),
-  marcarNotificacaoLida: (id: Identificador) =>
-    requisicao<Notificacao>(`/notificacoes/${id}`, corpo("PUT", { lida: true })),
-  excluirNotificacao: (id: Identificador) => requisicao<void>(`/notificacoes/${id}`, { method: "DELETE" }),
+  // a API só deixa o destinatário (usuarioId) alterar ou apagar a notificação
+  marcarNotificacaoLida: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<Notificacao>(`/notificacoes/${id}`, corpo("PUT", { usuarioId, lida: true })),
+  excluirNotificacao: (id: Identificador, usuarioId: Identificador) =>
+    requisicao<void>(`/notificacoes/${id}${consulta({ usuarioId })}`, { method: "DELETE" }),
   enviarLembrete: (dados: DadosLembrete) => requisicao<Notificacao>("/notificacoes", corpo("POST", dados)),
 };
 

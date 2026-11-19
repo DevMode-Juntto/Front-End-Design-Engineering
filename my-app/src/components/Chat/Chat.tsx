@@ -197,7 +197,7 @@ export default function Chat() {
             }
             await Promise.all(
               novasConversas.map((notificacao) =>
-                api.marcarNotificacaoLida(notificacao.id),
+                api.marcarNotificacaoLida(notificacao.id, notificacao.idUsuario),
               ),
             );
             window.dispatchEvent(
